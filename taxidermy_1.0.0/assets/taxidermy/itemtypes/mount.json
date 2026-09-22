@@ -1,0 +1,30 @@
+{
+  "code": "mount",
+  "class": "TaxidermyMount",
+  "maxStackSize": 1,
+  "shape": {
+    "base": "game:item/resource/hide/medium1"
+  },
+  "textures": {
+    "furside": {
+      "base": "game:item/resource/hide/raw"
+    },
+    "fleshside": {
+      "base": "game:item/resource/hide/flesh"
+    }
+  },
+  "guiTransform": {
+    "rotation": {
+      "x": -180,
+      "y": -128,
+      "z": 0
+    },
+    "origin": {
+      "x": 0.5,
+      "y": 0.5,
+      "z": 0.5
+    },
+    "scale": 1.3
+  },
+  "materialDensity": 300
+}

@@ -1,0 +1,110 @@
+[
+  {
+    "ingredientPattern": "H,P,G",
+    "shapeless": true,
+    "width": 1,
+    "height": 3,
+    "ingredients": {
+      "H": {
+        "type": "item",
+        "code": "taxidermy:head-preserved"
+      },
+      "P": {
+        "type": "item",
+        "code": "game:hide-raw-small"
+      },
+      "G": {
+        "type": "item",
+        "code": "game:drygrass",
+        "quantity": 2
+      }
+    },
+    "copyAttributesFrom": "H",
+    "output": {
+      "type": "item",
+      "code": "taxidermy:mount",
+      "quantity": 1
+    }
+  },
+  {
+    "ingredientPattern": "H,P,G",
+    "shapeless": true,
+    "width": 1,
+    "height": 3,
+    "ingredients": {
+      "H": {
+        "type": "item",
+        "code": "taxidermy:head-preserved"
+      },
+      "P": {
+        "type": "item",
+        "code": "game:hide-raw-medium"
+      },
+      "G": {
+        "type": "item",
+        "code": "game:drygrass",
+        "quantity": 4
+      }
+    },
+    "copyAttributesFrom": "H",
+    "output": {
+      "type": "item",
+      "code": "taxidermy:mount",
+      "quantity": 1
+    }
+  },
+  {
+    "ingredientPattern": "H,P,G",
+    "shapeless": true,
+    "width": 1,
+    "height": 3,
+    "ingredients": {
+      "H": {
+        "type": "item",
+        "code": "taxidermy:head-preserved"
+      },
+      "P": {
+        "type": "item",
+        "code": "game:hide-raw-large"
+      },
+      "G": {
+        "type": "item",
+        "code": "game:drygrass",
+        "quantity": 6
+      }
+    },
+    "copyAttributesFrom": "H",
+    "output": {
+      "type": "item",
+      "code": "taxidermy:mount",
+      "quantity": 1
+    }
+  },
+  {
+    "ingredientPattern": "H,P,G",
+    "shapeless": true,
+    "width": 1,
+    "height": 3,
+    "ingredients": {
+      "H": {
+        "type": "item",
+        "code": "taxidermy:head-preserved"
+      },
+      "P": {
+        "type": "item",
+        "code": "game:hide-raw-huge"
+      },
+      "G": {
+        "type": "item",
+        "code": "game:drygrass",
+        "quantity": 8
+      }
+    },
+    "copyAttributesFrom": "H",
+    "output": {
+      "type": "item",
+      "code": "taxidermy:mount",
+      "quantity": 1
+    }
+  }
+]

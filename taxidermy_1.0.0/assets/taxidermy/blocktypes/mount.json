@@ -1,0 +1,19 @@
+{
+  "code": "mount",
+  "class": "TaxidermyMount",
+  "entityClass": "TaxidermyMount",
+  "drawtype": "json",
+  "shape": { "base": "block/empty" },
+  "textures": { "all": { "base": "game:block/wood/planks/oak1" } },
+  "blockmaterial": "Other",
+  "resistance": 1,
+  "lightAbsorption": 0,
+  "renderpass": "OpaqueNoCull",
+  "sideopaque": { "all": false },
+  "sidesolid": { "all": false },
+  "collisionBoxes": [],
+  "selectionBoxes": [ { "x1": 0, "y1": 0, "z1": 0, "x2": 1, "y2": 1, "z2": 1 } ],
+  "replaceable": 0,
+  "sounds": { "place": "game:block/leather", "break": "game:block/leather", "hit": "game:block/leather" },
+  "creativeinventory": {}
+}

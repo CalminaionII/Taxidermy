@@ -1,0 +1,72 @@
+<Project Sdk="Microsoft.NET.Sdk">
+	<PropertyGroup>
+		<TargetFramework>net10.0</TargetFramework>
+		<AssemblyName>taxidermy</AssemblyName>
+		<Platforms>AnyCPU</Platforms>
+		<PlatformTarget>AnyCPU</PlatformTarget>
+		<Prefer32Bit>false</Prefer32Bit>
+		<Nullable>disable</Nullable>
+		<ImplicitUsings>enable</ImplicitUsings>
+
+		<!-- KEEP THE LINE NUMBERS, DROP THE PERSONAL PATH. The shipped .pdb turns a stack
+		     trace into a file and line, but without PathMap every stranger's log would carry
+		     "E:\Game Mods\Vintage Story Mods (AI)\Taxidermy\...". -->
+		<PathMap>$(MSBuildProjectDirectory)=.</PathMap>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<Compile Remove="tools\**" />
+		<None Include="tools\**" />
+		<Compile Remove="backup\**" />
+		<None Include="backup\**" />
+		<Compile Remove="mods\**" />
+		<None Include="mods\**" />
+	</ItemGroup>
+
+	<!-- ASSETS ARE NOT BUILD OUTPUT. They live in mods\taxidermy_<version>\assets\ beside
+	     modinfo.json and modicon.png; package.py zips them from there and takes only the
+	     dll, pdb and deps out of bin\. One source per mod. -->
+
+	<!-- 0Harmony IS REFERENCED, for exactly one patch: BarrelRecipe.TryCraftNow clones its
+	     output from the recipe and carries over freshness only, so a specimen sealed in a
+	     barrel would forget which animal it was. See src/BarrelPatch.cs. Harmony is
+	     pardeike/Harmony (MIT), shipped by the game in Lib\; it is not game code. -->
+
+	<!-- THE GAME DLLs, 1.22.7 - the version the test install actually RUNS. If the
+	     launcher moves again these paths and TESTER in tools/deploy.py are the only things
+	     that need changing. -->
+	<ItemGroup>
+		<Reference Include="0Harmony">
+			<HintPath>..\..\..\Games\Vintage Story\Story Forge\Versions\1.22.7\Lib\0Harmony.dll</HintPath>
+			<Private>False</Private>
+		</Reference>
+		<Reference Include="protobuf-net">
+			<HintPath>..\..\..\Games\Vintage Story\Story Forge\Versions\1.22.7\Lib\protobuf-net.dll</HintPath>
+			<Private>false</Private>
+		</Reference>
+		<Reference Include="Newtonsoft.Json">
+			<HintPath>..\..\..\Games\Vintage Story\Story Forge\Versions\1.22.7\Lib\Newtonsoft.Json.dll</HintPath>
+			<Private>False</Private>
+		</Reference>
+		<Reference Include="Vintagestory">
+			<HintPath>..\..\..\Games\Vintage Story\Story Forge\Versions\1.22.7\Vintagestory.dll</HintPath>
+			<Private>False</Private>
+		</Reference>
+		<Reference Include="VintagestoryAPI">
+			<HintPath>..\..\..\Games\Vintage Story\Story Forge\Versions\1.22.7\VintagestoryAPI.dll</HintPath>
+			<Private>False</Private>
+		</Reference>
+		<Reference Include="VintagestoryLib">
+			<HintPath>..\..\..\Games\Vintage Story\Story Forge\Versions\1.22.7\VintagestoryLib.dll</HintPath>
+			<Private>False</Private>
+		</Reference>
+		<Reference Include="VSSurvivalMod">
+			<HintPath>..\..\..\Games\Vintage Story\Story Forge\Versions\1.22.7\Mods\VSSurvivalMod.dll</HintPath>
+			<Private>False</Private>
+		</Reference>
+		<Reference Include="VSEssentials">
+			<HintPath>..\..\..\Games\Vintage Story\Story Forge\Versions\1.22.7\Mods\VSEssentials.dll</HintPath>
+			<Private>False</Private>
+		</Reference>
+	</ItemGroup>
+</Project>

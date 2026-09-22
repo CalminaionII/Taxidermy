@@ -1,0 +1,569 @@
+[
+  {
+    "code": "taxidermy:hare",
+    "entityCodes": [
+      "game:hare-*-adult-*"
+    ],
+    "poses": [
+      {
+        "code": "standing"
+      },
+      {
+        "code": "sitting",
+        "animation": "sit",
+        "frame": 15
+      },
+      {
+        "code": "lying",
+        "animation": "lie",
+        "frame": 15
+      },
+      {
+        "code": "sleeping",
+        "animation": "sleep",
+        "frame": 15
+      },
+      {
+        "code": "sniffing",
+        "animation": "sniff",
+        "frame": 30
+      }
+    ],
+    "hideSize": "small"
+  },
+  {
+    "code": "taxidermy:fox",
+    "entityCodes": [
+      "game:fox-*-adult-*"
+    ],
+    "poses": [
+      {
+        "code": "standing"
+      },
+      {
+        "code": "sitting",
+        "animation": "sit",
+        "frame": 15
+      },
+      {
+        "code": "lying",
+        "animation": "lie",
+        "frame": 15
+      },
+      {
+        "code": "sleeping",
+        "animation": "sleep",
+        "frame": 15
+      },
+      {
+        "code": "sniffing",
+        "animation": "sniff",
+        "frame": 60
+      }
+    ],
+    "hideSize": "small"
+  },
+  {
+    "code": "taxidermy:raccoon",
+    "entityCodes": [
+      "game:raccoon-*-adult-*"
+    ],
+    "poses": [
+      {
+        "code": "standing"
+      },
+      {
+        "code": "sitting",
+        "animation": "sit",
+        "frame": 15
+      },
+      {
+        "code": "lying",
+        "animation": "lie",
+        "frame": 15
+      },
+      {
+        "code": "sleeping",
+        "animation": "sleep",
+        "frame": 15
+      },
+      {
+        "code": "gathering",
+        "animation": "gather",
+        "frame": 25
+      },
+      {
+        "code": "eating",
+        "animation": "eat",
+        "frame": 22
+      }
+    ],
+    "hideSize": "small"
+  },
+  {
+    "code": "taxidermy:wolf",
+    "entityCodes": [
+      "game:wolf-*-adult-*"
+    ],
+    "poses": [
+      {
+        "code": "standing"
+      },
+      {
+        "code": "sitting",
+        "animation": "sit",
+        "frame": 30
+      },
+      {
+        "code": "lying",
+        "animation": "lie",
+        "frame": 30
+      },
+      {
+        "code": "sleeping",
+        "animation": "sleep",
+        "frame": 60
+      },
+      {
+        "code": "howling",
+        "animation": "howl",
+        "frame": 50
+      },
+      {
+        "code": "snarling",
+        "animation": "snarl_state",
+        "frame": 16
+      },
+      {
+        "code": "eating",
+        "animation": "eat",
+        "frame": 60
+      }
+    ],
+    "hideSize": "medium"
+  },
+  {
+    "code": "taxidermy:hyena",
+    "entityCodes": [
+      "game:hyena-*-adult-*"
+    ],
+    "poses": [
+      {
+        "code": "standing"
+      },
+      {
+        "code": "sitting",
+        "animation": "sit",
+        "frame": 15
+      },
+      {
+        "code": "lying",
+        "animation": "lie",
+        "frame": 15
+      },
+      {
+        "code": "sleeping",
+        "animation": "sleep",
+        "frame": 15
+      },
+      {
+        "code": "sniffing",
+        "animation": "sniff",
+        "frame": 60
+      }
+    ],
+    "hideSize": "medium"
+  },
+  {
+    "code": "taxidermy:bear",
+    "entityCodes": [
+      "game:bear-*-adult-*"
+    ],
+    "poses": [
+      {
+        "code": "standing"
+      },
+      {
+        "code": "sitting",
+        "animation": "sit",
+        "frame": 15
+      },
+      {
+        "code": "lying",
+        "animation": "lie",
+        "frame": 15
+      },
+      {
+        "code": "sleeping",
+        "animation": "sleep",
+        "frame": 15
+      },
+      {
+        "code": "rearing",
+        "animation": "stand",
+        "frame": 70
+      },
+      {
+        "code": "grazing",
+        "animation": "eat",
+        "frame": 30
+      }
+    ],
+    "hideSize": "huge"
+  },
+  {
+    "code": "taxidermy:pig",
+    "entityCodes": [
+      "game:pig-*-adult-*",
+      "game:pig-*-elder-*"
+    ],
+    "poses": [
+      {
+        "code": "standing"
+      },
+      {
+        "code": "sitting",
+        "animation": "sit",
+        "frame": 30
+      },
+      {
+        "code": "sleeping",
+        "animation": "sleep",
+        "frame": 60
+      },
+      {
+        "code": "roaring",
+        "animation": "roar",
+        "frame": 45
+      },
+      {
+        "code": "grazing",
+        "animation": "eat",
+        "frame": 80
+      }
+    ],
+    "hideSize": "medium"
+  },
+  {
+    "code": "taxidermy:sheep",
+    "entityCodes": [
+      "game:sheep-*-adult-*"
+    ],
+    "poses": [
+      {
+        "code": "standing"
+      },
+      {
+        "code": "sitting",
+        "animation": "sit",
+        "frame": 30
+      },
+      {
+        "code": "sleeping",
+        "animation": "sleep",
+        "frame": 60
+      },
+      {
+        "code": "roaring",
+        "animation": "roar",
+        "frame": 45
+      },
+      {
+        "code": "grazing",
+        "animation": "eat",
+        "frame": 80
+      }
+    ],
+    "hideSize": "large"
+  },
+  {
+    "code": "taxidermy:goat",
+    "entityCodes": [
+      "game:goat-*-adult-*"
+    ],
+    "poses": [
+      {
+        "code": "standing"
+      },
+      {
+        "code": "sitting",
+        "animation": "sit",
+        "frame": 15
+      },
+      {
+        "code": "sleeping",
+        "animation": "sleep",
+        "frame": 15
+      },
+      {
+        "code": "threatening",
+        "animation": "threat",
+        "frame": 15
+      },
+      {
+        "code": "roaring",
+        "animation": "roar",
+        "frame": 15
+      },
+      {
+        "code": "grazing",
+        "animation": "eat",
+        "frame": 25
+      }
+    ],
+    "hideSize": "medium"
+  },
+  {
+    "code": "taxidermy:gazelle",
+    "entityCodes": [
+      "game:gazelle-*-adult-*"
+    ],
+    "poses": [
+      {
+        "code": "standing"
+      },
+      {
+        "code": "sitting",
+        "animation": "sit",
+        "frame": 15
+      },
+      {
+        "code": "sleeping",
+        "animation": "sleep",
+        "frame": 15
+      },
+      {
+        "code": "grazing",
+        "animation": "eat",
+        "frame": 25
+      }
+    ],
+    "hideSize": "medium"
+  },
+  {
+    "code": "taxidermy:deer",
+    "entityCodes": [
+      "game:deer-*-adult-*"
+    ],
+    "poses": [
+      {
+        "code": "standing"
+      },
+      {
+        "code": "sitting",
+        "animation": "sit",
+        "frame": 30
+      },
+      {
+        "code": "sleeping",
+        "animation": "sleep",
+        "frame": 60
+      },
+      {
+        "code": "roaring",
+        "animation": "roar",
+        "frame": 45
+      },
+      {
+        "code": "grazing",
+        "animation": "eat",
+        "frame": 110
+      }
+    ],
+    "hideSize": "large"
+  },
+  {
+    "code": "taxidermy:moose",
+    "entityCodes": [
+      "game:moose-*-adult-*"
+    ],
+    "poses": [
+      {
+        "code": "standing"
+      },
+      {
+        "code": "sitting",
+        "animation": "sit",
+        "frame": 30
+      },
+      {
+        "code": "sleeping",
+        "animation": "sleep",
+        "frame": 60
+      },
+      {
+        "code": "roaring",
+        "animation": "roar",
+        "frame": 45
+      },
+      {
+        "code": "grazing",
+        "animation": "eat",
+        "frame": 110
+      }
+    ],
+    "hideSize": "huge"
+  },
+  {
+    "code": "taxidermy:chicken-hen",
+    "entityCodes": [
+      "game:chicken-hen"
+    ],
+    "poses": [
+      {
+        "code": "standing"
+      },
+      {
+        "code": "sitting",
+        "animation": "sit",
+        "frame": 15
+      },
+      {
+        "code": "sleeping",
+        "animation": "sleep",
+        "frame": 15
+      },
+      {
+        "code": "pecking",
+        "animation": "eat",
+        "frame": 13
+      }
+    ],
+    "hideSize": "small"
+  },
+  {
+    "code": "taxidermy:chicken-rooster",
+    "entityCodes": [
+      "game:chicken-rooster"
+    ],
+    "poses": [
+      {
+        "code": "standing"
+      },
+      {
+        "code": "sitting",
+        "animation": "sit",
+        "frame": 15
+      },
+      {
+        "code": "sleeping",
+        "animation": "sleep",
+        "frame": 15
+      },
+      {
+        "code": "crowing",
+        "animation": "roostercall",
+        "frame": 40
+      }
+    ],
+    "hideSize": "small"
+  },
+  {
+    "code": "taxidermy:drifter",
+    "entityCodes": [
+      "game:drifter-*"
+    ],
+    "hideSize": "medium",
+    "poses": [
+      {
+        "code": "standing",
+        "animation": "standidle",
+        "frame": 15
+      },
+      {
+        "code": "crawling",
+        "animation": "crawlidle",
+        "frame": 15
+      },
+      {
+        "code": "attacking",
+        "animation": "standattack",
+        "frame": 15
+      },
+      {
+        "code": "despairing",
+        "animation": "standdespair",
+        "frame": 90
+      },
+      {
+        "code": "crying",
+        "animation": "standcry",
+        "frame": 55
+      }
+    ]
+  },
+  {
+    "code": "taxidermy:shiver",
+    "entityCodes": [
+      "game:shiver-*"
+    ],
+    "hideSize": "large",
+    "headElements": [
+      "Neck"
+    ],
+    "poses": [
+      {
+        "code": "standing",
+        "animation": "idle",
+        "frame": 50
+      },
+      {
+        "code": "biting",
+        "animation": "bite",
+        "frame": 15
+      },
+      {
+        "code": "headbutting",
+        "animation": "headbutt",
+        "frame": 15
+      },
+      {
+        "code": "grappling",
+        "animation": "grapple-start",
+        "frame": 25
+      },
+      {
+        "code": "despairing",
+        "animation": "despair",
+        "frame": 200
+      }
+    ]
+  },
+  {
+    "code": "taxidermy:bowtorn",
+    "entityCodes": [
+      "game:bowtorn-*"
+    ],
+    "hideSize": "large",
+    "headElements": [
+      "Neck3"
+    ],
+    "poses": [
+      {
+        "code": "standing",
+        "animation": "idle",
+        "frame": 30
+      },
+      {
+        "code": "turret",
+        "animation": "turret",
+        "frame": 25
+      },
+      {
+        "code": "loading",
+        "animation": "load",
+        "frame": 45
+      },
+      {
+        "code": "stabbing",
+        "animation": "stab",
+        "frame": 15
+      },
+      {
+        "code": "contorting",
+        "animation": "contort",
+        "frame": 120
+      }
+    ]
+  }
+]

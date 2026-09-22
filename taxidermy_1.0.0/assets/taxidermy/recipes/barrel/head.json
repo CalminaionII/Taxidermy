@@ -1,0 +1,46 @@
+[
+  {
+    "code": "taxidermy-head-borax",
+    "sealHours": 18,
+    "ingredients": [
+      {
+        "type": "item",
+        "code": "game:dilutedboraxportion",
+        "litres": 1,
+        "consumeLitres": 1
+      },
+      {
+        "type": "item",
+        "code": "taxidermy:head-raw",
+        "quantity": 1
+      }
+    ],
+    "output": {
+      "type": "item",
+      "code": "taxidermy:head-preserved",
+      "stackSize": 1
+    }
+  },
+  {
+    "code": "taxidermy-head-zincsulfate",
+    "sealHours": 12,
+    "ingredients": [
+      {
+        "type": "item",
+        "code": "game:sulfate-full-zinc",
+        "litres": 1,
+        "consumeLitres": 1
+      },
+      {
+        "type": "item",
+        "code": "taxidermy:head-raw",
+        "quantity": 1
+      }
+    ],
+    "output": {
+      "type": "item",
+      "code": "taxidermy:head-preserved",
+      "stackSize": 1
+    }
+  }
+]

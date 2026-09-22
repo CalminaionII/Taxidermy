@@ -1,0 +1,11 @@
+{
+  "type": "code",
+  "modid": "taxidermy",
+  "name": "Taxidermy",
+  "authors": [ "Calminaion" ],
+  "description": "Mount the animals you hunt. Harvest a carcass for a specimen, preserve it in a barrel of diluted borax like the fish, and place it as a posed mount - cycle its pose with a wrench. Animals are JSON definitions, so other mods can add their own.",
+  "version": "1.0.0",
+  "dependencies": { "game": "1.22.0" },
+  "requiredOnClient": true,
+  "requiredOnServer": true
+}
