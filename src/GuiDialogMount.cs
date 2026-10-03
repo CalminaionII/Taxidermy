@@ -18,6 +18,7 @@ public class MountAdjustPacket
     public float OffX, OffY, OffZ;   // in 1/16ths of a block
     public float RotationDeg;
     public float TiltDeg;
+    public bool BoxFollows;
 }
 
 /// <summary>
@@ -40,6 +41,19 @@ public class HeadAdjustPacket
     public float TiltDeg;
 }
 
+/// <summary>
+/// Server to client: "you may adjust this - open the window". The client cannot check land
+/// claims itself (vsapi ILandClaimAPI: TryAccess/TestAccess "return always true when called on
+/// the client"), so opening the window waits for the server's yes (Calm, 2026-09-23). A refused
+/// player gets vanilla's claim message from TryAccess instead, once.
+/// </summary>
+[ProtoContract(ImplicitFields = ImplicitFields.AllPublic)]
+public class OpenAdjustPacket
+{
+    public int X, Y, Z;
+    public bool Head;   // true: a head on a vanilla antler mount; false: our mount block
+}
+
 public sealed class GuiDialogMount : GuiDialog
 {
     public const int PacketId = 4201;
@@ -49,6 +63,8 @@ public sealed class GuiDialogMount : GuiDialog
     private readonly Action<MountAdjustPacket> send;
     private string pose;
     private float offX, offY, offZ, rotDeg, tiltDeg;
+    private bool boxFollows;
+    private readonly bool hasBox;               // false: a head on a wall has no box of ours to move
     private bool filling;
 
     public override string ToggleKeyCombinationCode => null;
@@ -58,7 +74,7 @@ public sealed class GuiDialogMount : GuiDialog
     public GuiDialogMount(ICoreClientAPI capi, BEMount be, AnimalDefinition def)
         : this(capi, Lang.Get("taxidermy:adjust-title"), def.Poses, be.Data?.GetString("pose") ?? def.Poses[0].Code,
                be.OffX * 16, be.OffY * 16, be.OffZ * 16, -be.Rotation * GameMath.RAD2DEG, be.Tilt * GameMath.RAD2DEG,
-               p => capi.Network.SendBlockEntityPacket(be.Pos, PacketId, p))
+               p => capi.Network.SendBlockEntityPacket(be.Pos, PacketId, p), true, be.BoxFollows)
     { }
 
     /// <summary>A head on an antler mount: position only, stored on the head, sent over the mod channel.</summary>
@@ -68,13 +84,17 @@ public sealed class GuiDialogMount : GuiDialog
                Specimen.Of(head)?.GetFloat("offz") * 16 ?? 0, -(Specimen.Of(head)?.GetFloat("rot") ?? 0) * GameMath.RAD2DEG,
                (Specimen.Of(head)?.GetFloat("tilt") ?? 0) * GameMath.RAD2DEG,
                p => capi.Network.GetChannel(TaxidermyModSystem.Channel).SendPacket(new HeadAdjustPacket
-                   { X = pos.X, Y = pos.Y, Z = pos.Z, OffX = p.OffX, OffY = p.OffY, OffZ = p.OffZ, RotationDeg = p.RotationDeg, TiltDeg = p.TiltDeg }))
+                   { X = pos.X, Y = pos.Y, Z = pos.Z, OffX = p.OffX, OffY = p.OffY, OffZ = p.OffZ, RotationDeg = p.RotationDeg, TiltDeg = p.TiltDeg }),
+               false, false)
     { }
 
     private GuiDialogMount(ICoreClientAPI capi, string title, PoseDefinition[] poses, string pose,
-        float offX, float offY, float offZ, float rotDeg, float tiltDeg, Action<MountAdjustPacket> send) : base(capi)
+        float offX, float offY, float offZ, float rotDeg, float tiltDeg, Action<MountAdjustPacket> send,
+        bool hasBox, bool boxFollows) : base(capi)
     {
         this.title = title;
+        this.hasBox = hasBox;
+        this.boxFollows = boxFollows;
         this.poses = poses;
         this.pose = pose;
         this.offX = offX; this.offY = offY; this.offZ = offZ; this.rotDeg = rotDeg; this.tiltDeg = tiltDeg;
@@ -117,6 +137,15 @@ public sealed class GuiDialogMount : GuiDialog
             c.AddNumberInput(Row(LabelW, y, FieldW, RowH), v => OnNumber(k, v), CairoFont.WhiteDetailText(), key);
             y += RowH + 6;
         }
+        if (hasBox)
+        {
+            // Calm, 2026-09-23: off keeps the box on the block (dioramas - animals nudged close
+            // together still each click on their own block); on moves it with the animal, so a
+            // nudged one is clicked where it stands rather than on the empty space it left.
+            c.AddStaticText(Lang.Get("taxidermy:adjust-boxfollows"), CairoFont.WhiteDetailText(), Row(0, y + 4, LabelW + 60, LabelH));
+            c.AddSwitch(OnBoxFollows, Row(LabelW + 70, y, 30, 30), "boxfollows");
+            y += RowH + 6;
+        }
         y += 4;
         c.AddSmallButton(Lang.Get("taxidermy:adjust-reset"), OnReset, Row(0, y, 120, 26));
         c.AddSmallButton(Lang.Get("taxidermy:adjust-close"), () => TryClose(), Row(W - 120, y, 120, 26));
@@ -129,6 +158,7 @@ public sealed class GuiDialogMount : GuiDialog
     {
         filling = true;
         Set("x", offX, 0.5f); Set("y", offY, 0.5f); Set("z", offZ, 0.5f); Set("rot", rotDeg, 5f); Set("tilt", tiltDeg, 5f);
+        SingleComposer?.GetSwitch("boxfollows")?.SetValue(boxFollows);
         filling = false;
     }
 
@@ -139,6 +169,13 @@ public sealed class GuiDialogMount : GuiDialog
         el.IntMode = false;
         el.Interval = interval;
         el.SetValue(value);
+    }
+
+    private void OnBoxFollows(bool on)
+    {
+        if (filling) return;
+        boxFollows = on;
+        Send();
     }
 
     private void OnPose(string code, bool selected)
@@ -170,5 +207,5 @@ public sealed class GuiDialogMount : GuiDialog
         return true;
     }
 
-    private void Send() => send(new MountAdjustPacket { Pose = pose, OffX = offX, OffY = offY, OffZ = offZ, RotationDeg = rotDeg, TiltDeg = tiltDeg });
+    private void Send() => send(new MountAdjustPacket { Pose = pose, OffX = offX, OffY = offY, OffZ = offZ, RotationDeg = rotDeg, TiltDeg = tiltDeg, BoxFollows = boxFollows });
 }

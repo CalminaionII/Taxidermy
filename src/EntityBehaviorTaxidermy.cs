@@ -6,31 +6,32 @@ using Vintagestory.GameContent;
 namespace Taxidermy;
 
 /// <summary>
-/// Attached in code to every entity type a definition matches (see the mod system). Vanilla's
-/// <c>EntityBehaviorHarvestable.GenerateDrops</c> asks every behaviour implementing
-/// <c>IHarvestableDrops</c> for extra stacks and adds them to the carcass's harvest inventory
-/// alongside the meat and hide - the antler-growth behaviour delivers antlers the same way.
-/// So the head appears in the normal knife-harvest window, no new tool involved, beside the
-/// meat and hide - which stay, because the hide is what the mount is stuffed with.
-///
-/// The drop rolls once, at harvest, on the server. Whether a specimen replaces the hide is
-/// deliberately NOT decided here - the interface can only add, and Calm wants to see (a) in
-/// play before deciding.
+/// Attached in code to every entity type a definition matches (see the mod system). It makes the
+/// HEAD; the harvest step that adds it, and sets the hides, is BarrelPatch.SwapHide - a postfix on
+/// vanilla's GenerateDrops that runs once per carcass at the knife harvest. The head used to come
+/// through IHarvestableDrops inside GenerateDrops, but vanilla builds a carcass's drops only once,
+/// and a falx hit (the rip harvest) could build them first with the head held back - the knife
+/// then gave the hide and no head (Calm, 2026-09-26, drifters).
 /// </summary>
-public sealed class EntityBehaviorTaxidermy : EntityBehavior, IHarvestableDrops
+public sealed class EntityBehaviorTaxidermy : EntityBehavior
 {
     public EntityBehaviorTaxidermy(Entity entity) : base(entity) { }
 
     public override string PropertyName() => TaxidermyModSystem.BehaviorCode;
 
-    public ItemStack[] GetHarvestableDrops(IWorldAccessor world, BlockPos pos, IPlayer byPlayer)
+    /// <summary>
+    /// Set while vanilla's rip harvest runs (BarrelPatch): drifters, shivers and bowtorns hit
+    /// with a ripHarvest blade have a chance to run the whole harvest and throw its first item on
+    /// the ground - which could be our head or hide. Calm, 2026-09-26: no head or hide from a rip
+    /// harvest; they come from the knife harvest only.
+    /// </summary>
+    [System.ThreadStatic] internal static bool RipHarvesting;
+
+    /// <summary>This carcass's head, when its roll hits (at most one; RollHead remembers the roll).</summary>
+    internal static ItemStack MakeHead(Entity entity, TaxidermyModSystem system, AnimalDefinition definition, float multiplier)
     {
-        if (world.Side != EnumAppSide.Server) return null;
-        var system = entity.Api.ModLoader.GetModSystem<TaxidermyModSystem>();
-        var definition = system.Find(entity.Code.ToString());
-        if (definition == null) return null;
-        float chance = Math.Clamp(definition.Chance ?? system.Config.HeadChance, 0f, 1f);
-        if (chance < 1 && world.Rand.NextDouble() > chance) return null;
+        var world = entity.World;
+        if (!system.RollHead(entity, definition, multiplier)) return null;
 
         var item = world.GetItem(new AssetLocation(Specimen.HeadRaw));
         if (item == null)
@@ -39,7 +40,9 @@ public sealed class EntityBehaviorTaxidermy : EntityBehavior, IHarvestableDrops
             return null;
         }
         var stack = new ItemStack(item);
-        stack.Attributes[Specimen.Key] = Specimen.Capture(entity, definition);
-        return [stack];
+        var data = Specimen.Capture(entity, definition);
+        stack.Attributes[Specimen.Key] = data;
+        Specimen.SetSize(stack, data);
+        return stack;
     }
 }

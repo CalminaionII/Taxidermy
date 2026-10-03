@@ -2,6 +2,7 @@ using System.Text;
 using Vintagestory.API.Client;
 using Vintagestory.API.Common;
 using Vintagestory.API.Config;
+using Vintagestory.API.Datastructures;
 using Vintagestory.API.MathTools;
 using Vintagestory.API.Server;
 
@@ -17,7 +18,7 @@ public sealed class ItemMount : Item
     public override string GetHeldItemName(ItemStack itemStack)
     {
         var data = Specimen.Of(itemStack);
-        return data == null ? base.GetHeldItemName(itemStack) : Lang.Get("taxidermy:item-mount-of", Specimen.AnimalName(data));
+        return data == null ? base.GetHeldItemName(itemStack) : Lang.Get("taxidermy:item-mount-of", Specimen.AnimalNameNoSex(data));
     }
 
     public override void GetHeldItemInfo(ItemSlot inSlot, StringBuilder dsc, IWorldAccessor world, bool withDebugInfo)
@@ -26,13 +27,16 @@ public sealed class ItemMount : Item
         var data = Specimen.Of(inSlot.Itemstack);
         if (data == null)
         {
-            dsc.AppendLine(Lang.Get("taxidermy:specimen-empty"));
+            // The handbook's mount (see Equals) - what every mount recipe's output looks like to it.
+            dsc.AppendLine(Lang.Get("taxidermy:mount-generic"));
             return;
         }
-        dsc.AppendLine(Lang.Get("taxidermy:mount-item-help"));
+        // Controls live in the handbook page (Calm, 2026-09-29); the held-help overlay still shows "Place mount".
+        if (ItemTaxidermyHide.SexLine(world, data) is { } sex) dsc.AppendLine(sex);
         var attachments = Specimen.Attachments(data);
         if (attachments.Length > 0)
             dsc.AppendLine(Lang.Get("taxidermy:specimen-with", string.Join(", ", attachments.Select(c => AttachmentName(world, c)))));
+        dsc.AppendLine(Lang.Get("taxidermy:mount-see-handbook"));
     }
 
     internal static string AttachmentName(IWorldAccessor world, string code)
@@ -92,9 +96,22 @@ public sealed class ItemMount : Item
         }
     }
 
+    /// <summary>
+    /// The handbook lists what a recipe makes by running it, and a mount recipe's output carries
+    /// only the head's pelt label, not its animal - one per recipe, so the needle, dry grass and
+    /// every pelt page listed 112 empty mounts (Calm, 2026-10-02). Mounts with no animal are all
+    /// the same item, so the handbook keeps one. Real mounts always carry their animal and never
+    /// stack (max stack 1), so nothing else sees this.
+    /// </summary>
+    public override bool Equals(ItemStack thisStack, ItemStack otherStack, params string[] ignoreAttributeSubTrees)
+    {
+        if (otherStack?.Collectible == this && Specimen.Of(thisStack) == null && Specimen.Of(otherStack) == null) return true;
+        return base.Equals(thisStack, otherStack, ignoreAttributeSubTrees);
+    }
+
     public override void OnBeforeRender(ICoreClientAPI capi, ItemStack itemstack, EnumItemRenderTarget target, ref ItemRenderInfo renderinfo)
     {
-        var data = Specimen.Of(itemstack);
+        var data = Specimen.Of(itemstack) ?? Specimen.Example(capi);
         var def = data == null ? null : capi.ModLoader.GetModSystem<TaxidermyModSystem>().Find(data);
         if (def != null)
         {

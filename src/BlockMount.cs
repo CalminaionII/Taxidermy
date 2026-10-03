@@ -10,68 +10,13 @@ using Vintagestory.GameContent;
 namespace Taxidermy;
 
 /// <summary>
-/// The placed mount. It has no shape of its own (no base yet - Calm wants to see the poses
-/// first); the block entity renders the animal. The wrench's own mode menu gains a "Pose"
-/// entry through <c>IExtraWrenchModes</c>, and its default Rotate mode turns the animal
-/// through <c>IWrenchOrientable</c>. Both are vanilla's mechanisms (vssurvivalmod
-/// Item/ItemWrench.cs): right-click is +1, left-click is -1.
+/// The placed mount. It has no shape of its own - it stands on whatever is under it - and the
+/// block entity renders the animal. Everything about it is set in the Adjust window (sneak +
+/// right-click, empty hand); plain right-click picks it up. The wrench modes it had at first
+/// were removed on 2026-09-22 as redundant once the window existed.
 /// </summary>
-public sealed class BlockMount : Block, IExtraWrenchModes, IWrenchOrientable
+public sealed class BlockMount : Block
 {
-    private SkillItem[] modes;
-
-    public override void OnLoaded(ICoreAPI api)
-    {
-        base.OnLoaded(api);
-        modes =
-        [
-            new SkillItem { Code = new AssetLocation("taxidermy:pose"), Name = Lang.Get("taxidermy:wrench-pose") },
-            new SkillItem { Code = new AssetLocation("taxidermy:adjust"), Name = Lang.Get("taxidermy:wrench-adjust") },
-        ];
-        if (api is ICoreClientAPI capi)
-        {
-            modes[0].WithIcon(capi, capi.Gui.LoadSvgWithPadding(new AssetLocation("game:textures/icons/rotate.svg"), 48, 48, 5, -1));
-            modes[1].WithIcon(capi, capi.Gui.LoadSvgWithPadding(new AssetLocation("game:textures/icons/moveud.svg"), 48, 48, 5, -1));
-        }
-    }
-
-    public override void OnUnloaded(ICoreAPI api)
-    {
-        foreach (var mode in modes ?? []) mode.Dispose();
-        base.OnUnloaded(api);
-    }
-
-    public SkillItem[] GetExtraWrenchModes(IPlayer byPlayer, BlockSelection blockSelection) => modes;
-
-    public void OnWrenchInteract(IPlayer player, BlockSelection blockSel, int mode, int v)
-    {
-        if (mode == 1)
-        {
-            // Adjust: a window, so client side only. The server hears about changes by packet.
-            if (api is ICoreClientAPI capi && api.World.BlockAccessor.GetBlockEntity<BEMount>(blockSel.Position) is { Data: not null } be
-                && capi.ModLoader.GetModSystem<TaxidermyModSystem>().Find(be.Data) is { } def)
-                new GuiDialogMount(capi, be, def).TryOpen();
-            return;
-        }
-        if (mode != 0 || !CanChange(player, blockSel)) return;
-        api.World.BlockAccessor.GetBlockEntity<BEMount>(blockSel.Position)?.CyclePose(Direction(player, v == 1 ? 1 : -1));
-    }
-
-    public void Rotate(EntityAgent byEntity, BlockSelection blockSel, int dir)
-    {
-        if (byEntity is EntityPlayer p && CanChange(p.Player, blockSel))
-            api.World.BlockAccessor.GetBlockEntity<BEMount>(blockSel.Position)?.RotateBy(Direction(p.Player, dir));
-    }
-
-    // Sprint-click goes the other way (Calm, 2026-09-20). Read the KEY, not the sprint
-    // ACTION, and from WorldData - shared reference sect.7.
-    private static int Direction(IPlayer player, int dir) => player.WorldData.EntityControls.CtrlKey ? -dir : dir;
-
-    // Both wrench paths run on client and server; the block entity's MarkDirty carries the
-    // result down, so only the server acts.
-    private bool CanChange(IPlayer player, BlockSelection sel) =>
-        api.Side == EnumAppSide.Server && api.World.Claims.TryAccess(player, sel.Position, EnumBlockAccessFlags.BuildOrBreak);
-
     /// <summary>
     /// Empty hand: sneak + right-click opens the Adjust window (Calm, 2026-09-21: a menu rather
     /// than wrench interactions - pose and position in one place, per mount), plain right-click
@@ -84,9 +29,9 @@ public sealed class BlockMount : Block, IExtraWrenchModes, IWrenchOrientable
         if (slot == null || !slot.Empty) return base.OnBlockInteractStart(world, byPlayer, blockSel);
         if (byPlayer.WorldData.EntityControls.ShiftKey)
         {
-            if (api is ICoreClientAPI capi && world.BlockAccessor.GetBlockEntity<BEMount>(blockSel.Position) is { Data: not null } be
-                && capi.ModLoader.GetModSystem<TaxidermyModSystem>().Find(be.Data) is { } def)
-                new GuiDialogMount(capi, be, def).TryOpen();
+            // The server decides and tells the client to open the window (claims, 2026-09-23).
+            if (world.Side == EnumAppSide.Server)
+                world.Api.ModLoader.GetModSystem<TaxidermyModSystem>().RequestAdjust(byPlayer, blockSel.Position, false);
             return true;
         }
         if (!world.Claims.TryAccess(byPlayer, blockSel.Position, EnumBlockAccessFlags.BuildOrBreak))
@@ -96,9 +41,11 @@ public sealed class BlockMount : Block, IExtraWrenchModes, IWrenchOrientable
         }
         if (world.Side == EnumAppSide.Server)
         {
-            var stack = StackAt(world, blockSel.Position);
+            // An orphaned mount is destroyed, not picked up (Calm, 2026-09-22): its animal's mod
+            // is gone, so the item would be a permanent dud in the inventory. See Orphaned().
+            var stack = Orphaned(world, blockSel.Position) ? null : StackAt(world, blockSel.Position);
             world.BlockAccessor.SetBlock(0, blockSel.Position);
-            if (!byPlayer.InventoryManager.TryGiveItemstack(stack)) world.SpawnItemEntity(stack, blockSel.Position.ToVec3d().Add(0.5, 0.5, 0.5));
+            if (stack != null && !byPlayer.InventoryManager.TryGiveItemstack(stack)) world.SpawnItemEntity(stack, blockSel.Position.ToVec3d().Add(0.5, 0.5, 0.5));
             world.PlaySoundAt(new AssetLocation("game:sounds/block/leather"), blockSel.Position.X + 0.5, blockSel.Position.Y + 0.5, blockSel.Position.Z + 0.5, null);
         }
         return true;
@@ -118,8 +65,28 @@ public sealed class BlockMount : Block, IExtraWrenchModes, IWrenchOrientable
 
     public override Cuboidf[] GetCollisionBoxes(IBlockAccessor blockAccessor, BlockPos pos) => [];
 
-    public override ItemStack[] GetDrops(IWorldAccessor world, BlockPos pos, IPlayer byPlayer, float dropQuantityMultiplier = 1) => [StackAt(world, pos)];
-    public override ItemStack OnPickBlock(IWorldAccessor world, BlockPos pos) => StackAt(world, pos);
+    public override ItemStack[] GetDrops(IWorldAccessor world, BlockPos pos, IPlayer byPlayer, float dropQuantityMultiplier = 1) =>
+        Orphaned(world, pos) ? [] : [StackAt(world, pos)];
+
+    public override ItemStack OnPickBlock(IWorldAccessor world, BlockPos pos) =>
+        Orphaned(world, pos) ? null : StackAt(world, pos);
+
+    /// <summary>
+    /// True when the animal this mount was made from no longer exists - its mod is not
+    /// installed - so there is nothing to build a model from and the block is showing the
+    /// placeholder cube. Such a mount breaks into nothing: the item could never render or be
+    /// placed as itself again, and leaving it in an inventory would only puzzle its owner.
+    /// The block is otherwise untouched, so putting the animal's mod back restores it whole.
+    /// </summary>
+    private static bool Orphaned(IWorldAccessor world, BlockPos pos)
+    {
+        var data = world.BlockAccessor.GetBlockEntity<BEMount>(pos)?.Data;
+        if (data == null) return true;
+        if (world.GetEntityType(new AssetLocation(data.GetString("entityCode"))) == null) return true;
+        // The animal is there but nothing says how to mount it any more - its definition file
+        // was removed. Same outcome: no model, so nothing worth keeping.
+        return world.Api.ModLoader.GetModSystem<TaxidermyModSystem>()?.Find(data) == null;
+    }
 
     private ItemStack StackAt(IWorldAccessor world, BlockPos pos)
     {
@@ -133,18 +100,7 @@ public sealed class BlockMount : Block, IExtraWrenchModes, IWrenchOrientable
     public override string GetPlacedBlockName(IWorldAccessor world, BlockPos pos)
     {
         var data = world.BlockAccessor.GetBlockEntity<BEMount>(pos)?.Data;
-        return data == null ? base.GetPlacedBlockName(world, pos) : Lang.Get("taxidermy:block-mount-of", Specimen.AnimalName(data));
-    }
-
-    /// <summary>
-    /// 0 = not holding a wrench, 1 = wrench in Rotate mode, 2 = wrench in Pose mode. The info box
-    /// and the hints show only what the held tool will do (Calm, 2026-09-21).
-    /// </summary>
-    private static int WrenchMode(IPlayer player, BlockSelection sel)
-    {
-        var slot = player?.InventoryManager?.ActiveHotbarSlot;
-        if (slot?.Itemstack?.Collectible is not ItemWrench wrench) return 0;
-        return wrench.GetToolMode(slot, player, sel) switch { 0 => 1, 1 => 2, _ => 3 };
+        return data == null ? base.GetPlacedBlockName(world, pos) : Lang.Get("taxidermy:block-mount-of", Specimen.AnimalNameNoSex(data));
     }
 
     public override string GetPlacedBlockInfo(IWorldAccessor world, BlockPos pos, IPlayer forPlayer)
@@ -152,42 +108,18 @@ public sealed class BlockMount : Block, IExtraWrenchModes, IWrenchOrientable
         var be = world.BlockAccessor.GetBlockEntity<BEMount>(pos);
         if (be?.Data == null) return base.GetPlacedBlockInfo(world, pos, forPlayer);
         var sb = new StringBuilder();
+        if (ItemTaxidermyHide.SexLine(world, be.Data) is { } sex) sb.AppendLine(sex);
         sb.AppendLine(Lang.Get("taxidermy:pose-label", Lang.Get("taxidermy:pose-" + be.Data.GetString("pose"))));
-        sb.AppendLine(Lang.Get(WrenchMode(forPlayer, forPlayer?.CurrentBlockSelection) switch
-        {
-            1 => "taxidermy:mount-help-rotate",
-            2 => "taxidermy:mount-help-pose",
-            3 => "taxidermy:mount-help-adjust",
-            _ => "taxidermy:mount-help",
-        }));
+        // Controls: the interaction help overlay and the handbook page (Calm, 2026-09-29).
+        sb.AppendLine(Lang.Get("taxidermy:mount-see-handbook"));
         return sb.ToString();
     }
 
     public override WorldInteraction[] GetPlacedBlockInteractionHelp(IWorldAccessor world, BlockSelection selection, IPlayer forPlayer) =>
-        WrenchMode(forPlayer, selection) switch
-        {
-            1 =>
-            [
-                new WorldInteraction { ActionLangCode = "taxidermy:blockhelp-rotate", MouseButton = EnumMouseButton.Right },
-                new WorldInteraction { ActionLangCode = "taxidermy:blockhelp-rotate-back", MouseButton = EnumMouseButton.Right, HotKeyCode = "ctrl" },
-            ],
-            2 =>
-            [
-                new WorldInteraction { ActionLangCode = "taxidermy:blockhelp-pose-next", MouseButton = EnumMouseButton.Right },
-                new WorldInteraction { ActionLangCode = "taxidermy:blockhelp-pose-prev", MouseButton = EnumMouseButton.Right, HotKeyCode = "ctrl" },
-            ],
-            3 => [new WorldInteraction { ActionLangCode = "taxidermy:blockhelp-adjust", MouseButton = EnumMouseButton.Right }],
-            _ =>
-            [
-                new WorldInteraction { ActionLangCode = "taxidermy:blockhelp-pickup", MouseButton = EnumMouseButton.Right, RequireFreeHand = true },
-                new WorldInteraction { ActionLangCode = "taxidermy:blockhelp-adjust", MouseButton = EnumMouseButton.Right, HotKeyCode = "shift", RequireFreeHand = true },
-                new WorldInteraction { ActionLangCode = "taxidermy:blockhelp-wrench", MouseButton = EnumMouseButton.Right, Itemstacks = WrenchStacks(world) },
-            ],
-        };
-
-    private static ItemStack[] wrenchStacks;
-    private static ItemStack[] WrenchStacks(IWorldAccessor world) =>
-        wrenchStacks ??= world.Items.Where(i => i?.Code != null && i.Code.Path.StartsWith("wrench-")).Select(i => new ItemStack(i)).ToArray();
+    [
+        new WorldInteraction { ActionLangCode = "taxidermy:blockhelp-pickup", MouseButton = EnumMouseButton.Right, RequireFreeHand = true },
+        new WorldInteraction { ActionLangCode = "taxidermy:blockhelp-adjust", MouseButton = EnumMouseButton.Right, HotKeyCode = "shift", RequireFreeHand = true },
+    ];
 }
 
 public sealed class BEMount : BlockEntity
@@ -205,6 +137,13 @@ public sealed class BEMount : BlockEntity
 
     /// <summary>Nose up/down, radians, about the feet - from the Adjust window.</summary>
     public float Tilt { get; private set; }
+
+    /// <summary>
+    /// Whether the selection box moves with the nudge. Off (the default, and what every mount
+    /// placed before 2026-09-23 has) keeps it on the block, for dioramas; on lets you click a
+    /// nudged animal where it actually stands. Per mount, from the Adjust window.
+    /// </summary>
+    public bool BoxFollows { get; private set; }
 
     /// <summary>Selection box, from the entity's own collision size. Built on both sides.</summary>
     public Cuboidf Box { get; private set; }
@@ -267,7 +206,9 @@ public sealed class BEMount : BlockEntity
     {
         base.OnReceivedClientPacket(fromPlayer, packetid, data);
         if (packetid != GuiDialogMount.PacketId || Data == null) return;
-        if (!Api.World.Claims.TryAccess(fromPlayer, Pos, EnumBlockAccessFlags.BuildOrBreak)) return;
+        // Backstop only - the window opens after RequestAdjust has said yes. Silent, or a refusal
+        // would repeat for every number dragged.
+        if (Api.World.Claims.TestAccess(fromPlayer, Pos, EnumBlockAccessFlags.BuildOrBreak) != EnumWorldAccessResponse.Granted) return;
         var p = SerializerUtil.Deserialize<MountAdjustPacket>(data);
         var def = Api.ModLoader.GetModSystem<TaxidermyModSystem>().Find(Data);
         if (def != null && def.Poses.Any(q => q.Code == p.Pose)) Data.SetString("pose", p.Pose);
@@ -277,16 +218,7 @@ public sealed class BEMount : BlockEntity
         // The window's rotation is negated both ways so its up arrow turns the animal LEFT (Calm, 2026-09-22).
         Rotation = GameMath.Mod(-p.RotationDeg * GameMath.DEG2RAD, GameMath.TWOPI);
         Tilt = GameMath.Clamp(p.TiltDeg, -90, 90) * GameMath.DEG2RAD;
-        Rebuild();
-        MarkDirty(true);
-    }
-
-    public void CyclePose(int dir)
-    {
-        var def = Api.ModLoader.GetModSystem<TaxidermyModSystem>().Find(Data);
-        if (Data == null || def == null) return;
-        int index = Array.FindIndex(def.Poses, p => p.Code == Data.GetString("pose"));
-        Data.SetString("pose", def.Poses[GameMath.Mod(index + dir, def.Poses.Length)].Code);
+        BoxFollows = p.BoxFollows;
         Rebuild();
         MarkDirty(true);
     }
@@ -306,6 +238,7 @@ public sealed class BEMount : BlockEntity
         if (def == null)
         {
             Api.Logger.Warning("[Taxidermy] No definition for specimen {0} at {1}", Data.GetString("entityCode"), Pos);
+            if (Api is ICoreClientAPI noDef) mesh = MountMesher.GetPlaceholderMesh(noDef);
             return;
         }
         float stand = appliedStand = StandOffset();
@@ -313,32 +246,108 @@ public sealed class BEMount : BlockEntity
         if (props != null)
         {
             float w = Math.Min(1f, props.CollisionBoxSize.X);
-            float h = Math.Min(2f, props.CollisionBoxSize.Y);
-            // The box stays on the block whatever the nudge (Calm, 2026-09-22); only the stand height moves it.
-            Box = new Cuboidf(0.5f - w / 2, stand, 0.5f - w / 2, 0.5f + w / 2, h + stand, 0.5f + w / 2);
+            // At most one block in every direction (Calm, 2026-09-23, on an elephant): the engine
+            // only tests a block's selection boxes when the line of sight crosses that block's own
+            // cell, so the upper half of the old 2-block box was drawn but could never be clicked.
+            // It is the SIZE that is capped, not the position - with BoxFollows on, the whole box
+            // still travels with the animal, even past the block edge (Calm, same day).
+            float h = Math.Min(1f, props.CollisionBoxSize.Y);
+            // By default the box stays on the block whatever the nudge (Calm, 2026-09-22); only the
+            // stand height moves it. With BoxFollows on it takes the same nudge as the mesh below.
+            float dx = 0, dy = 0, dz = 0;
+            if (BoxFollows) (dx, dy, dz) = NudgeOffset();
+            Box = new Cuboidf(0.5f - w / 2 + dx, stand + dy, 0.5f - w / 2 + dz, 0.5f + w / 2 + dx, h + stand + dy, 0.5f + w / 2 + dz);
         }
         if (Api is not ICoreClientAPI capi) return;
         try
         {
             var shared = MountMesher.Get(capi, Data, def);
-            if (shared == null) return;
-            mesh = shared.Clone();
-            // Tilt first, in the rest frame where the animal faces -X, so it is nose up/down
-            // whatever way it is then turned. About the feet, at the block centre.
-            if (Tilt != 0) mesh.Rotate(new Vec3f(0.5f, 0, 0.5f), 0, 0, Tilt);
-            // The nudge is in the ANIMAL's frame, applied before the turn so "forward" is the way
-            // it faces whichever way that is (Calm, 2026-09-22: it changed meaning by facing).
-            // Rest pose faces -X, so forward is -X and its right-hand side is -Z.
-            // Sign confirmed in game 2026-09-22: positive back/forward must move it forward (up arrow = forward).
-            if (OffX != 0 || OffZ != 0) mesh.Translate(OffZ, 0, -OffX);
-            mesh.Rotate(new Vec3f(0.5f, 0, 0.5f), 0, Rotation, 0);
-            if (stand != 0 || OffY != 0) mesh.Translate(0, stand + OffY, 0);
+            // No mesh means no model to lift - the animal's mod is gone. Fall through to the
+            // placeholder below rather than returning, which is what left these blocks
+            // invisible in the first place (Calm saw it in game, 2026-09-22).
+            if (shared != null)
+            {
+                mesh = shared.Clone();
+                // Tilt first, in the rest frame where the animal faces -X, so it is nose up/down
+                // whatever way it is then turned. About the feet, at the block centre.
+                if (Tilt != 0) mesh.Rotate(new Vec3f(0.5f, 0, 0.5f), 0, 0, Tilt);
+                // The nudge is in the ANIMAL's frame, applied before the turn so "forward" is the
+                // way it faces whichever way that is (Calm, 2026-09-22: it changed meaning by facing).
+                // Rest pose faces -X, so forward is -X and its right-hand side is -Z.
+                // Sign confirmed in game 2026-09-22: positive back/forward must move it forward.
+                if (OffX != 0 || OffZ != 0) mesh.Translate(OffZ, 0, -OffX);
+                mesh.Rotate(new Vec3f(0.5f, 0, 0.5f), 0, Rotation, 0);
+                if (stand != 0 || OffY != 0) mesh.Translate(0, stand + OffY, 0);
+                // On the client the box comes from the model as drawn, not the collision box - the
+                // collision box is square and usually smaller, so long animals and lying poses had
+                // to be clicked in one spot (Calm, 2026-09-23). Box follows off: take the nudge back
+                // out, so the box stays put as before. The server cannot build the mesh and keeps
+                // the collision-sized box from above.
+                float dx = 0, dy = 0, dz = 0;
+                if (!BoxFollows) (dx, dy, dz) = NudgeOffset();
+                Box = ModelBox(mesh, dx, dy, dz) ?? Box;
+            }
         }
         catch (Exception e)
         {
             // Log the full exception: on a NullReference the message is empty and the frame is the diagnosis.
             Api.Logger.Error("[Taxidermy] Cannot build the mount at {0} ({1}): {2}", Pos, Data.GetString("entityCode"), e);
         }
+        // Nothing to draw and a specimen that says there should be: the animal's mod is not
+        // installed. Show the placeholder cube rather than empty air, which is impossible to
+        // find (Calm, 2026-09-22). The block breaks into nothing - see BlockMount.Orphaned.
+        mesh ??= MountMesher.GetPlaceholderMesh(capi);
+    }
+
+    /// <summary>
+    /// One box around the built model, less (dx, dy, dz), at most one block in each direction:
+    /// a model wider or deeper than a block keeps a block-wide box centred on it, a taller one
+    /// keeps the bottom block (the feet - the part above could never be clicked anyway). Never
+    /// thinner than an eighth, so a flat pose still has something to click.
+    /// </summary>
+    private static Cuboidf ModelBox(MeshData m, float dx, float dy, float dz)
+    {
+        if (m == null || m.VerticesCount == 0) return null;
+        var xyz = m.xyz;
+        float x1 = float.MaxValue, y1 = float.MaxValue, z1 = float.MaxValue;
+        float x2 = float.MinValue, y2 = float.MinValue, z2 = float.MinValue;
+        for (int i = 0; i < m.VerticesCount; i++)
+        {
+            float x = xyz[i * 3], y = xyz[i * 3 + 1], z = xyz[i * 3 + 2];
+            if (x < x1) x1 = x; if (x > x2) x2 = x;
+            if (y < y1) y1 = y; if (y > y2) y2 = y;
+            if (z < z1) z1 = z; if (z > z2) z2 = z;
+        }
+        const float Max = 1f, Min = 1f / 8f;
+        static (float, float) Fit(float lo, float hi)
+        {
+            float c = (lo + hi) / 2, half = (hi - lo) / 2;
+            half = Math.Clamp(half, Min / 2, Max / 2);
+            return (c - half, c + half);
+        }
+        (x1, x2) = Fit(x1, x2);
+        (z1, z2) = Fit(z1, z2);
+        if (y2 - y1 > Max) y2 = y1 + Max;
+        if (y2 - y1 < Min) y2 = y1 + Min;
+        return new Cuboidf(x1 - dx, y1 - dy, z1 - dz, x2 - dx, y2 - dy, z2 - dz);
+    }
+
+    /// <summary>
+    /// Where the nudge puts the animal, in world blocks - the same move Rebuild gives the mesh:
+    /// (OffZ, 0, -OffX) in the animal's frame, turned by Rotation, plus OffY. Turned through
+    /// Mat4f.RotateXYZ + MulWithVec3, which is exactly what MeshData.Rotate applies to every vertex
+    /// (vsapi MeshData.MatrixTransform), so the box cannot disagree with the model on direction
+    /// or sign. Tilt is left out: it pivots about the feet and barely moves the footprint.
+    /// </summary>
+    private (float dx, float dy, float dz) NudgeOffset()
+    {
+        if (OffX == 0 && OffY == 0 && OffZ == 0) return (0, 0, 0);
+        var m = new float[16];
+        Mat4f.RotateXYZ(m, 0, Rotation, 0);
+        var v = new float[] { OffZ, 0, -OffX };
+        var o = new float[3];
+        Mat4f.MulWithVec3(m, v, o);
+        return (o[0], OffY, o[2]);
     }
 
     public override bool OnTesselation(ITerrainMeshPool mesher, ITesselatorAPI tessThreadTesselator)
@@ -360,6 +369,7 @@ public sealed class BEMount : BlockEntity
         tree.SetFloat("rotation", Rotation);
         tree.SetFloat("offx", OffX); tree.SetFloat("offy", OffY); tree.SetFloat("offz", OffZ);
         tree.SetFloat("tilt", Tilt);
+        tree.SetBool("boxfollows", BoxFollows);
     }
 
     public override void FromTreeAttributes(ITreeAttribute tree, IWorldAccessor worldAccessForResolve)
@@ -369,6 +379,7 @@ public sealed class BEMount : BlockEntity
         Rotation = tree.GetFloat("rotation");
         OffX = tree.GetFloat("offx"); OffY = tree.GetFloat("offy"); OffZ = tree.GetFloat("offz");
         Tilt = tree.GetFloat("tilt");
+        BoxFollows = tree.GetBool("boxfollows");
         if (Api != null)
         {
             Rebuild();

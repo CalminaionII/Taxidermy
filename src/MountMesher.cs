@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Vintagestory.API.Client;
 using Vintagestory.API.Common;
 using Vintagestory.API.Datastructures;
@@ -30,8 +31,44 @@ public static class MountMesher
 {
     private const string CacheKey = "taxidermy-mount-meshes";
     private const string ItemCacheKey = "taxidermy-item-meshes";
+    // Concurrent: read on the tesselation thread (displays, BESkinnedHead) while the main thread builds.
     private const string HeadCacheKey = "taxidermy-head-meshes";
     private const string HeadItemCacheKey = "taxidermy-head-item-meshes";
+    private const string PlaceholderCacheKey = "taxidermy-placeholder-mesh";
+
+    /// <summary>
+    /// The stand-in cube for a mount whose animal cannot be built - the animal's mod is not
+    /// installed, so there is no shape to lift. Vanilla's own white-with-a-red-question-mark
+    /// texture (game:textures/unknown.png), which says "something is missing here" in the
+    /// language the game already uses. Calm, 2026-09-22: an invisible block is very hard to
+    /// find, and these must be easy to see and break.
+    /// The specimen is untouched underneath, so reinstalling the animal mod brings the real
+    /// mount back.
+    /// </summary>
+    public static MeshData GetPlaceholderMesh(ICoreClientAPI capi)
+    {
+        var cache = ObjectCacheUtil.GetOrCreate(capi, PlaceholderCacheKey, () => new Dictionary<string, MeshData>());
+        if (cache.TryGetValue("mesh", out var cached)) return cached;
+        try
+        {
+            var block = capi.World.GetBlock(new AssetLocation(Specimen.MountBlock));
+            var shape = capi.Assets.TryGet("taxidermy:shapes/block/placeholder.json")?.ToObject<Shape>();
+            if (block == null || shape == null)
+            {
+                // Silence here is what an invisible mount looks like, so say it out loud.
+                capi.Logger.Warning("[Taxidermy] No placeholder mesh: block={0}, shape={1}", block != null, shape != null);
+                return null;
+            }
+            capi.Tesselator.TesselateShape(block, shape, out var mesh);
+            if (mesh != null) cache["mesh"] = mesh;
+            return mesh;
+        }
+        catch (Exception e)
+        {
+            capi.Logger.Error("[Taxidermy] Cannot build the placeholder mesh: {0}", e);
+            return null;
+        }
+    }
 
     /// <summary>What makes two specimens render differently: animal, coat, attachments.</summary>
     public static string IdentityKey(ITreeAttribute data) =>
@@ -50,29 +87,36 @@ public static class MountMesher
         return mesh;
     }
 
+
     // ------------------------------------------------------------------ heads
 
-    public static MeshData TryGetHeadMesh(ICoreClientAPI capi, ITreeAttribute data, AnimalDefinition def)
+    /// <summary>Main thread, at client start: see ItemTaxidermyHide.PrepareCaches.</summary>
+    public static void PrepareCaches(ICoreClientAPI capi) =>
+        ObjectCacheUtil.GetOrCreate(capi, HeadCacheKey, () => new ConcurrentDictionary<string, MeshData>());
+
+    public static MeshData TryGetHeadMesh(ICoreClientAPI capi, ITreeAttribute data, AnimalDefinition def, bool flat = false)
     {
-        var cache = ObjectCacheUtil.GetOrCreate(capi, HeadCacheKey, () => new Dictionary<string, MeshData>());
-        return cache.TryGetValue(HeadKey(data, def), out var m) ? m : null;
+        var cache = ObjectCacheUtil.GetOrCreate(capi, HeadCacheKey, () => new ConcurrentDictionary<string, MeshData>());
+        return cache.TryGetValue(HeadKey(data, def, flat), out var m) ? m : null;
     }
 
-    private static string HeadKey(ITreeAttribute data, AnimalDefinition def) => IdentityKey(data) + "|" + def.Scale + "|" + def.Code;
+    private static string HeadKey(ITreeAttribute data, AnimalDefinition def, bool flat = false) =>
+        IdentityKey(data) + "|" + def.Scale + "|" + def.Code + (flat ? "|flat" : "");
 
     /// <summary>
     /// The animal's head, lifted out of its own model: the topmost element whose name contains
     /// "head" and everything under it (antlers and horns step-parent onto "head", so they come
     /// too), eyes removed, in the rest pose, grounded and centred on the block. Falls back to
     /// the whole animal when a model has no element called head. Main thread only.
+    /// <paramref name="flat"/>: the head as it lies on the ground - see BuildHead.
     /// </summary>
-    public static MeshData GetHeadMesh(ICoreClientAPI capi, ITreeAttribute data, AnimalDefinition def)
+    public static MeshData GetHeadMesh(ICoreClientAPI capi, ITreeAttribute data, AnimalDefinition def, bool flat = false)
     {
-        var cache = ObjectCacheUtil.GetOrCreate(capi, HeadCacheKey, () => new Dictionary<string, MeshData>());
-        string key = HeadKey(data, def);
+        var cache = ObjectCacheUtil.GetOrCreate(capi, HeadCacheKey, () => new ConcurrentDictionary<string, MeshData>());
+        string key = HeadKey(data, def, flat);
         if (cache.TryGetValue(key, out var cached)) return cached;
         MeshData mesh = null;
-        try { mesh = BuildHead(capi, data, def); }
+        try { mesh = BuildHead(capi, data, def, flat); }
         catch (Exception e) { capi.Logger.Error("[Taxidermy] Cannot build the head for {0}: {1}", data.GetString("entityCode"), e); }
         mesh ??= Get(capi, data, def);
         if (mesh != null) cache[key] = mesh;
@@ -95,7 +139,15 @@ public static class MountMesher
     private static readonly string[] EyeWords = ["eye"];
     private static readonly string[] NeckWords = ["neck", "throat"];
 
-    private static MeshData BuildHead(ICoreClientAPI capi, ITreeAttribute data, AnimalDefinition def)
+    /// <summary>
+    /// <paramref name="flat"/>: the head as it lies on the ground - none of the body's pose (the
+    /// parents' transform is skipped and the root's own tilt zeroed), turned about its pitch axis to
+    /// where it settles on a floor: the angle, -90..+30 degrees, that puts its centre lowest above
+    /// its lowest point (a wolf sits level on its jaw, a deer tips back ~23 degrees onto its jaw).
+    /// The neck comes too (2026-09-26; 2026-09-25 it was dropped), but only the head is measured
+    /// for the settle and the floor, so the neck is free to go into the ground.
+    /// </summary>
+    private static MeshData BuildHead(ICoreClientAPI capi, ITreeAttribute data, AnimalDefinition def, bool flat = false)
     {
         var entityCode = new AssetLocation(data.GetString("entityCode"));
         var props = capi.World.GetEntityType(entityCode);
@@ -129,13 +181,19 @@ public static class MountMesher
             return null;
         }
         // Take the neck too (Calm, 2026-09-21): it is usually the head's parent, and on a wall it
-        // is what sinks into the plaque, which makes the head sit and position naturally.
+        // is what sinks into the plaque, which makes the head sit and position naturally. On the
+        // ground too since 2026-09-26 (Calm: some heads, like the corrupt drifter's, lose detail
+        // without it) - but the head ALONE decides how it settles, so the neck may go into the floor.
+        var headOnly = head;
+        var necks = new List<ShapeElement>();
         while (chain.Count > 0 && chain[^1].Name != null && NeckWords.Any(w => chain[^1].Name.Contains(w, StringComparison.OrdinalIgnoreCase)))
         {
             head = chain[^1];
+            necks.Insert(0, head);
             chain.RemoveAt(chain.Count - 1);
         }
-        RemoveEyes(head);
+        if (!def.KeepEyes) RemoveEyes(head);
+        if (flat) foreach (var neck in necks) FillMissingFaces(neck);
 
         // The head's own coordinates are relative to its parent's frame. Tesselate it as a root
         // - which places it in that frame - then push the vertices through the parents'
@@ -145,31 +203,97 @@ public static class MountMesher
         // that the parents compound and the head lands nowhere near the slot (2026-09-21).
         var chainMatrix = Mat4f.Create();
         var tmp = new float[16];
+        if (flat)
+        {
+            // Keep only which way the body TURNS the head (the parents' rotation about Y), drop its
+            // tilts. Most models face -X outright, but some are built facing another way and turned
+            // by a parent - vanilla's bear faces +Z and its root "Cube1" turns it -90 about Y - and
+            // without that turn a bear head lies sideways and Settle rolls it instead of tipping it.
+            double turn = chain.Sum(p => p.RotationY);
+            chain.Clear();
+            head.RotationX = head.RotationZ = 0;
+            if (turn != 0) Mat4f.RotateY(chainMatrix, chainMatrix, (float)(turn * GameMath.DEG2RAD));
+        }
         foreach (var parent in chain)
         {
             Mat4f.Identity(tmp);
             Mat4f.Mul(chainMatrix, chainMatrix, parent.GetLocalTransformMatrix(0, tmp));
         }
 
+        var texSource = new AtlasSource(capi, textures, baseKeys, data.GetInt("textureIndex"), entityCode, shape.Textures);
+        var meta = new TesselationMetaData { TypeForLogging = logName, TexSource = texSource };
+
+        // On the ground with a neck: the head alone, in the same frame as the whole piece (the
+        // necks' own transforms on top), is what Settle and the floor are measured on.
+        MeshData reference = null;
+        if (flat && necks.Count > 0)
+        {
+            var headParent = headOnly.ParentElement;
+            headOnly.ParentElement = null;
+            shape.Elements = [headOnly];
+            capi.Tesselator.TesselateShape(meta, shape, out reference);
+            headOnly.ParentElement = headParent;
+            var neckMatrix = (float[])chainMatrix.Clone();
+            foreach (var neck in necks)
+            {
+                Mat4f.Identity(tmp);
+                Mat4f.Mul(neckMatrix, neckMatrix, neck.GetLocalTransformMatrix(0, tmp));
+            }
+            Transform(reference, neckMatrix);
+        }
+
         head.ParentElement = null;
         shape.Elements = [head];
-        var texSource = new AtlasSource(capi, textures, baseKeys, data.GetInt("textureIndex"), entityCode, shape.Textures);
-        capi.Tesselator.TesselateShape(new TesselationMetaData { TypeForLogging = logName, TexSource = texSource }, shape, out var mesh);
+        capi.Tesselator.TesselateShape(meta, shape, out var mesh);
         Transform(mesh, chainMatrix);
+        reference ??= mesh;
+        if (flat) Settle(reference, reference == mesh ? null : mesh);
 
         float scale = props.Client.Size * def.Scale;
-        if (scale != 1) mesh.Scale(new Vec3f(0.5f, 0, 0.5f), scale, scale, scale);
+        if (scale != 1)
+        {
+            mesh.Scale(new Vec3f(0.5f, 0, 0.5f), scale, scale, scale);
+            if (reference != mesh) reference.Scale(new Vec3f(0.5f, 0, 0.5f), scale, scale, scale);
+        }
 
         // Feet-on-the-floor equivalent for a head: lowest point at y = 0, centred on the block.
         float minX = float.MaxValue, minY = float.MaxValue, minZ = float.MaxValue, maxX = float.MinValue, maxZ = float.MinValue;
-        for (int i = 0; i < mesh.VerticesCount; i++)
+        for (int i = 0; i < reference.VerticesCount; i++)
         {
-            float x = mesh.xyz[i * 3], y = mesh.xyz[i * 3 + 1], z = mesh.xyz[i * 3 + 2];
+            float x = reference.xyz[i * 3], y = reference.xyz[i * 3 + 1], z = reference.xyz[i * 3 + 2];
             minX = Math.Min(minX, x); maxX = Math.Max(maxX, x); minY = Math.Min(minY, y);
             minZ = Math.Min(minZ, z); maxZ = Math.Max(maxZ, z);
         }
-        if (mesh.VerticesCount > 0) mesh.Translate(0.5f - (minX + maxX) / 2, -minY, 0.5f - (minZ + maxZ) / 2);
+        if (reference.VerticesCount > 0) mesh.Translate(0.5f - (minX + maxX) / 2, -minY, 0.5f - (minZ + maxZ) / 2);
         return mesh;
+    }
+
+    /// <summary>
+    /// Turn the mesh about Z (the pitch of a model facing -X) to where it would settle on a floor;
+    /// <paramref name="also"/>, when given, is turned the same way (the neck follows the head).
+    /// </summary>
+    private static void Settle(MeshData mesh, MeshData also = null)
+    {
+        int n = mesh.VerticesCount;
+        if (n == 0) return;
+        float cx = 0, cy = 0;
+        for (int i = 0; i < n; i++) { cx += mesh.xyz[i * 3]; cy += mesh.xyz[i * 3 + 1]; }
+        cx /= n; cy /= n;
+        int best = 0; float bestHeight = float.MaxValue;
+        for (int deg = -90; deg <= 30; deg++)
+        {
+            float a = deg * GameMath.DEG2RAD, sin = MathF.Sin(a), cos = MathF.Cos(a), low = float.MaxValue;
+            // the centroid is the pivot, so its height after the turn stays cy
+            for (int i = 0; i < n; i++)
+            {
+                float x = mesh.xyz[i * 3] - cx, y = mesh.xyz[i * 3 + 1] - cy;
+                low = Math.Min(low, x * sin + y * cos + cy);
+            }
+            if (cy - low < bestHeight - 1e-5f) { bestHeight = cy - low; best = deg; }
+        }
+        if (best == 0) return;
+        mesh.Rotate(new Vec3f(cx, cy, 0), 0, 0, best * GameMath.DEG2RAD);
+        also?.Rotate(new Vec3f(cx, cy, 0), 0, 0, best * GameMath.DEG2RAD);
     }
 
     private static ShapeElement FindHead(ShapeElement[] elements, List<ShapeElement> chain, string[] words)
@@ -183,6 +307,38 @@ public static class MountMesher
             chain.RemoveAt(chain.Count - 1);
         }
         return null;
+    }
+
+    /// <summary>
+    /// A model leaves out the faces nobody should see - the back of the neck where it meets the
+    /// body, the back of a paper-thin part - and the game draws no face from behind. Cut off the
+    /// body and lying on the ground, the head was see-through from behind (Calm, 2026-09-26: the
+    /// manatee's big neck, the boar's neck). Each missing face gets a copy of the one opposite,
+    /// which has the same size; new face objects in a new array, because Clone shares them with
+    /// the living animal's shape. The NECK elements only, not their children: filling every part
+    /// put odd faces on fur strands and the like (Calm, 2026-09-26, the musk ox).
+    /// </summary>
+    private static void FillMissingFaces(ShapeElement el)
+    {
+        var faces = el.FacesResolved;
+        if (faces != null && el.HasFaces())
+        {
+            ShapeElementFace[] filled = null;
+            for (int i = 0; i < 6; i++)
+            {
+                if (faces[i] != null) continue;
+                var src = faces[BlockFacing.ALLFACES[i].Opposite.Index] ?? faces.FirstOrDefault(f => f != null);
+                if (src?.Uv == null) continue;
+                filled ??= (ShapeElementFace[])faces.Clone();
+                filled[i] = new ShapeElementFace
+                {
+                    Texture = src.Texture, Uv = (float[])src.Uv.Clone(), ReflectiveMode = src.ReflectiveMode,
+                    WindMode = (sbyte[])src.WindMode?.Clone(), WindData = (sbyte[])src.WindData?.Clone(),
+                    Rotation = src.Rotation, Glow = src.Glow
+                };
+            }
+            if (filled != null) el.FacesResolved = filled;
+        }
     }
 
     /// <summary>Eye elements are separate boxes with a see-through texture; on a trophy they read as holes.</summary>
@@ -260,8 +416,12 @@ public static class MountMesher
             refs.Clear();
         }
         ObjectCacheUtil.TryGet<Dictionary<string, MeshData>>(capi, CacheKey)?.Clear();
-        ObjectCacheUtil.TryGet<Dictionary<string, MeshData>>(capi, HeadCacheKey)?.Clear();
+        ObjectCacheUtil.TryGet<ConcurrentDictionary<string, MeshData>>(capi, HeadCacheKey)?.Clear();
+        ObjectCacheUtil.TryGet<Dictionary<string, MeshData>>(capi, PlaceholderCacheKey)?.Clear();
     }
+
+    /// <summary>Animals already reported missing this session - see Build.</summary>
+    private static readonly HashSet<string> WarnedMissing = new();
 
     private static MeshData Build(ICoreClientAPI capi, ITreeAttribute data, AnimalDefinition def)
     {
@@ -270,7 +430,11 @@ public static class MountMesher
         var loaded = props?.Client?.LoadedShape;
         if (loaded == null)
         {
-            capi.Logger.Warning("[Taxidermy] No loaded shape for {0} - is the entity from a mod that is not installed?", entityCode);
+            // Once per animal per session: a mount or head of a missing animal is asked for again
+            // every frame, and this line filled Calm's log 16,696 times in two minutes (2026-09-24).
+            lock (WarnedMissing)
+                if (WarnedMissing.Add(entityCode.ToString()))
+                    capi.Logger.Warning("[Taxidermy] No loaded shape for {0} - is the entity from a mod that is not installed?", entityCode);
             return null;
         }
         string logName = "taxidermy:" + entityCode.ToShortString();
@@ -305,29 +469,34 @@ public static class MountMesher
         }
 
         var texSource = new AtlasSource(capi, textures, baseKeys, data.GetInt("textureIndex"), entityCode);
-        capi.Tesselator.TesselateShape(new TesselationMetaData
-        {
-            TypeForLogging = logName,
-            TexSource = texSource,
-            WithJointIds = matrices != null,
-        }, shape, out var mesh);
-
-        if (matrices != null) ApplyJoints(mesh, matrices);
-        mesh.CustomInts = null;
-
         float scale = props.Client.Size * def.Scale;
-        if (scale != 1) mesh.Scale(new Vec3f(0.5f, 0, 0.5f), scale, scale, scale);
+        MeshData Tesselate()
+        {
+            capi.Tesselator.TesselateShape(new TesselationMetaData
+            {
+                TypeForLogging = logName,
+                TexSource = texSource,
+                WithJointIds = matrices != null,
+            }, shape, out var m);
+            if (matrices != null) ApplyJoints(m, matrices);
+            m.CustomInts = null;
+            if (scale != 1) m.Scale(new Vec3f(0.5f, 0, 0.5f), scale, scale, scale);
+            return m;
+        }
+
+        var mesh = Tesselate();
+        var reference = mesh;
 
         // Feet on the floor and footprint centred on the block, whatever the pose does: a lying
         // or rearing animal's bounding box wanders, and Calm saw poses drift off centre.
         float minX = float.MaxValue, minY = float.MaxValue, minZ = float.MaxValue, maxX = float.MinValue, maxZ = float.MinValue;
-        for (int i = 0; i < mesh.VerticesCount; i++)
+        for (int i = 0; i < reference.VerticesCount; i++)
         {
-            minX = Math.Min(minX, mesh.xyz[i * 3]); maxX = Math.Max(maxX, mesh.xyz[i * 3]);
-            minY = Math.Min(minY, mesh.xyz[i * 3 + 1]);
-            minZ = Math.Min(minZ, mesh.xyz[i * 3 + 2]); maxZ = Math.Max(maxZ, mesh.xyz[i * 3 + 2]);
+            minX = Math.Min(minX, reference.xyz[i * 3]); maxX = Math.Max(maxX, reference.xyz[i * 3]);
+            minY = Math.Min(minY, reference.xyz[i * 3 + 1]);
+            minZ = Math.Min(minZ, reference.xyz[i * 3 + 2]); maxZ = Math.Max(maxZ, reference.xyz[i * 3 + 2]);
         }
-        if (mesh.VerticesCount > 0) mesh.Translate(0.5f - (minX + maxX) / 2, -minY, 0.5f - (minZ + maxZ) / 2);
+        if (reference.VerticesCount > 0) mesh.Translate(0.5f - (minX + maxX) / 2, -minY, 0.5f - (minZ + maxZ) / 2);
 
         if (mesh.VerticesCount == 0) capi.Logger.Warning("[Taxidermy] Empty mesh for {0} pose {1}", entityCode, pose.Code);
         return mesh;
