@@ -4,6 +4,6 @@ A Vintage Story mod: mount the animals you hunt - the whole animal in a pose of 
 
 - Mod page: https://mods.vintagestory.at/taxidermy
 - Guide for modders: [MODDERS.md](MODDERS.md)
-- Auto Boxes, the measured selection and collision boxes, for your own mod: [AUTOBOXES.md](AUTOBOXES.md)
+- Auto Boxes, the measured selection and collision boxes, for your own mod: https://github.com/CalminaionII/VS-AutoBoxes-Code
 
 AI note: AI was used in making this mod.
