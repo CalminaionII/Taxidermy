@@ -42,6 +42,8 @@ Your animal's heads and mounts are in the Taxidermy creative tab, and the server
 ]
 ```
 
+**No boxes to write.** A definition never needs a selection or collision box: mounts, heads on the wall, and heads and pelts on the ground get a box measured from your animal's model as it is drawn - in every pose, at every size and turn, up to 6 blocks each way - that can be clicked all over, even where it reaches past its own block. A mount is solid part by part, measured from the model's own moving parts (the body, each leg, the neck, the head, the tail), so players can walk between its legs (Taxidermy 1.0.4 and later).
+
 #### Show the full example with every field
 
 Only **code**, **entityCodes** and **poses** are required. Each field is explained in the reference below.
@@ -114,6 +116,7 @@ Everything else follows from your file: the head is lifted out of your model at 
 | `keepEyes` | On by default. Keeps the model's eyes on the head, as glass eyes. Set it to false if your animal's eyes show as holes on a hung head. |
 | `category` | `"animal"` (the default) or `"mob"`. Which of the server's switches cover your creature: the animal ones, or the mob ones - so a server that turns mob hides off turns them off for your monsters too. Tag anything hostile as a mob, like the drifters. |
 | `creativeTab` | The creative tab your heads and mounts are listed in, besides General and Items - this mod's Taxidermy tab otherwise. Any name makes a new tab; title it with the lang key `game:tabname-<your tab>`. |
+| `group` | The handbook page its mounts share. Left out: its own code without the domain, so each definition has its own page ("Lynx mounts"). `"bear"` puts your animal on the game's "Bear mounts" page; one word on several definitions gives them one page of their own. Name it with the lang key `taxidermy:animaltype-<group>` (or `<yourmod>:animaltype-<group>`), else the group with a capital. |
 | **Housekeeping - all optional** |  |
 | `enabled` | True by default. Set it to false to switch a definition off without deleting it. |
 | `priority` | Which definition wins when two of them match the same entity, highest first. |

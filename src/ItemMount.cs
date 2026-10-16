@@ -112,7 +112,7 @@ public sealed class ItemMount : Item
     public override void OnBeforeRender(ICoreClientAPI capi, ItemStack itemstack, EnumItemRenderTarget target, ref ItemRenderInfo renderinfo)
     {
         var data = Specimen.Of(itemstack) ?? Specimen.Example(capi);
-        var def = data == null ? null : capi.ModLoader.GetModSystem<TaxidermyModSystem>().Find(data);
+        var def = data == null ? null : capi.ModLoader.GetModSystem<TaxidermyModSystem>().FindCached(data);
         if (def != null)
         {
             var meshRef = MountMesher.GetItemMesh(capi, data, def);

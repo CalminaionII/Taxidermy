@@ -33,6 +33,7 @@ public static class BarrelPatch
     {
         if (harmony != null) return;
         harmony = new Harmony(HarmonyId);
+        HeadPeltBoxes.Patch(harmony, api);   // auto boxes test: outlines of heads and pelts in vanilla blocks
         var target = AccessTools.Method(typeof(BarrelRecipe), nameof(BarrelRecipe.TryCraftNow));
         if (target == null)
         {

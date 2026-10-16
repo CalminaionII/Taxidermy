@@ -133,7 +133,7 @@ public sealed class ItemHead : Item, IContainedMeshSource
     {
         // A plain head (the handbook's, and every recipe output it lists) shows the example wolf.
         var data = Specimen.Of(itemstack) ?? Specimen.Example(capi);
-        var def = data == null ? null : capi.ModLoader.GetModSystem<TaxidermyModSystem>().Find(data);
+        var def = data == null ? null : capi.ModLoader.GetModSystem<TaxidermyModSystem>().FindCached(data);
         if (def != null)
         {
             var meshRef = MountMesher.GetHeadItemMesh(capi, data, def);
@@ -164,17 +164,17 @@ public sealed class ItemHead : Item, IContainedMeshSource
         bool onGround = atBlockPos != null && capi.World.BlockAccessor.GetBlock(atBlockPos) is BlockGroundStorage;
         if (Environment.CurrentManagedThreadId == RuntimeEnv.MainThreadId) BuildBoth(capi, data, def);
         var cached = MountMesher.TryGetHeadMesh(capi, data, def, onGround);
-        if (cached != null) return onAntlerMount ? ForAntlerMount(cached.Clone(), data) : ForGround(cached.Clone());
+        if (cached != null)
+        {
+            if (onAntlerMount || onGround) HeadPeltBoxes.Notice(atBlockPos);   // auto boxes test
+            return onAntlerMount ? ForAntlerMount(cached.Clone(), data) : ForGround(cached.Clone());
+        }
 
         // Returning null makes the display cache vanilla's default mesh - under our WAIT key while the
         // head is unbuilt (GetMeshCacheKey), so once both versions exist the key changes and the
         // redraw asks here again (DisplayMeshes).
-        var pos = atBlockPos?.Copy();
-        capi.Event.EnqueueMainThreadTask(() =>
-        {
-            BuildBoth(capi, data, def);
-            DisplayMeshes.Redraw(capi, pos);
-        }, "taxidermy-head-mesh");
+        // one build of both versions per specimen, however many displays ask (DisplayMeshes.Queue)
+        DisplayMeshes.Queue(capi, "head|" + MountMesher.IdentityKey(data) + "|" + def.Code + "|" + def.Scale, atBlockPos, () => BuildBoth(capi, data, def));
         return null;
     }
 

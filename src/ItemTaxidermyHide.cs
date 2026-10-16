@@ -245,8 +245,8 @@ public sealed class ItemTaxidermyHide : Item, IContainedMeshSource
         if (baseTransform == null || MeshKey(stack) is not { } key) return baseTransform;
         var extents = ObjectCacheUtil.GetOrCreate(capi, MeshCacheKey + "-extent", () => new ConcurrentDictionary<string, float>());
         if (!extents.TryGetValue(key, out float extent) || extent <= TunedExtent) return baseTransform;
-        var cache = ObjectCacheUtil.GetOrCreate(capi, TransformCacheKey, () => new Dictionary<string, FittedTransform>());
-        string ck = key + "|" + target + "|" + Code;
+        var cache = ObjectCacheUtil.GetOrCreate(capi, TransformCacheKey, () => new Dictionary<(string, EnumItemRenderTarget, AssetLocation), FittedTransform>());
+        var ck = (key, target, Code);
         // Rebuilt whenever the base transform changes, so .tfedit moves big pelts live too (Calm,
         // 2026-10-03: a pelt in hand would not move - the shrunk copy was made once and kept).
         if (cache.TryGetValue(ck, out var cached) && Same(cached.Snapshot, baseTransform)) return cached.Value;
@@ -322,16 +322,20 @@ public sealed class ItemTaxidermyHide : Item, IContainedMeshSource
     {
         if (api is not ICoreClientAPI capi || MeshKey(slot.Itemstack) is not { } key) return null;
         var cache = ObjectCacheUtil.GetOrCreate(capi, MeshCacheKey, () => new ConcurrentDictionary<string, MeshData>());
-        if (cache.TryGetValue(key, out var built)) return built?.Clone();
-        if (Environment.CurrentManagedThreadId == RuntimeEnv.MainThreadId) return GetMesh(capi, slot.Itemstack)?.Clone();
+        if (cache.TryGetValue(key, out var built))
+        {
+            if (built != null) HeadPeltBoxes.Notice(atBlockPos);   // auto boxes test
+            return built?.Clone();
+        }
+        if (Environment.CurrentManagedThreadId == RuntimeEnv.MainThreadId)
+        {
+            var made = GetMesh(capi, slot.Itemstack);
+            if (made != null) HeadPeltBoxes.Notice(atBlockPos);
+            return made?.Clone();
+        }
 
         var stack = slot.Itemstack.Clone();
-        var pos = atBlockPos?.Copy();
-        capi.Event.EnqueueMainThreadTask(() =>
-        {
-            GetMesh(capi, stack);
-            DisplayMeshes.Redraw(capi, pos);
-        }, "taxidermy-hide-mesh");
+        DisplayMeshes.Queue(capi, "hide|" + key, atBlockPos, () => GetMesh(capi, stack));
         return null;
     }
 
@@ -347,11 +351,17 @@ public sealed class ItemTaxidermyHide : Item, IContainedMeshSource
     }
 
     /// <summary>What makes two stacks look different: state, animal, coat. Null: no design, draw vanilla's hide.</summary>
+    /// <summary>Kept per data tree - asked several times a frame for every pelt drawn (Calm, 2026-10-09: performance).</summary>
+    private readonly System.Runtime.CompilerServices.ConditionalWeakTable<ITreeAttribute, string> meshKeys = new();
+
     private string MeshKey(ItemStack stack)
     {
         var data = Specimen.Of(stack);
         if (data == null) return null;
-        return State + "|" + data.GetString("entityCode") + "|" + data.GetInt("textureIndex");
+        if (meshKeys.TryGetValue(data, out var key)) return key;
+        key = State + "|" + data.GetString("entityCode") + "|" + data.GetInt("textureIndex");
+        meshKeys.AddOrUpdate(data, key);
+        return key;
     }
 
     private MeshData GetMesh(ICoreClientAPI capi, ItemStack stack)
@@ -426,7 +436,7 @@ public sealed class ItemTaxidermyHide : Item, IContainedMeshSource
         }
         ObjectCacheUtil.TryGet<ConcurrentDictionary<string, MeshData>>(capi, MeshCacheKey)?.Clear();
         ObjectCacheUtil.TryGet<ConcurrentDictionary<string, float>>(capi, MeshCacheKey + "-extent")?.Clear();
-        ObjectCacheUtil.TryGet<Dictionary<string, FittedTransform>>(capi, TransformCacheKey)?.Clear();
+        ObjectCacheUtil.TryGet<Dictionary<(string, EnumItemRenderTarget, AssetLocation), FittedTransform>>(capi, TransformCacheKey)?.Clear();
     }
 
     /// <summary>

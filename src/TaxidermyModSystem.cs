@@ -2,11 +2,13 @@ using Newtonsoft.Json.Linq;
 using Vintagestory.API.Client;
 using Vintagestory.API.Common;
 using Vintagestory.API.Common.Entities;
+using Vintagestory.API.Config;
 using Vintagestory.API.Datastructures;
 using Vintagestory.API.Server;
 using Vintagestory.API.Util;
 using Vintagestory.API.MathTools;
 using Vintagestory.GameContent;
+using Taxidermy.Handbook;
 
 namespace Taxidermy;
 
@@ -98,6 +100,13 @@ public sealed class TaxidermyConfig
     /// </summary>
     public bool MobVanillaHides { get; set; } = false;
 
+    /// <summary>
+    /// CLIENT setting (each player's own view): what a mount's outline - the box you aim at and click - is.
+    /// 0 (default) one box round the whole animal, 1 a box per moving part (legs, body, head...), 2 the body only (the
+    /// biggest part, grown to the torso), 3 the head only, 4 the placed box only (the one-block box at its feet, as before 1.0.4). Mounts are solid by their parts whichever it is. Calm, 2026-10-06, after a player on the Discord.
+    /// </summary>
+    public int MountOutline { get; set; } = 0;
+
     /// <summary>The pre-1.0.3 single switch: read once into both own-pelt switches, never written back.</summary>
     [Newtonsoft.Json.JsonProperty("CustomPelts", NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
     public bool? OldCustomPelts { get; set; }
@@ -117,6 +126,7 @@ public sealed class TaxidermyConfig
         }
         if (c.PeltCount is int n) { c.OnePeltPerAnimal = n <= 1; c.PeltCount = null; }
         if (c.OldCustomPelts is bool own) { c.AnimalOwnPelts = c.MobOwnPelts = own; c.OldCustomPelts = null; }
+        c.MountOutline = Math.Clamp(c.MountOutline, 0, 4);
         return c;
     }
 
@@ -134,6 +144,9 @@ public sealed class TaxidermyModSystem : ModSystem
     public const string Channel = "taxidermy";
 
     public TaxidermyConfig Config { get; private set; } = new();
+
+    /// <summary>Client: this player's mount outline (TaxidermyConfig.MountOutline), read by BEMount each time it is aimed at.</summary>
+    public static volatile int MountOutline;
     public IReadOnlyList<AnimalDefinition> Animals { get; private set; } = [];
 
     private ICoreAPI api;
@@ -148,6 +161,9 @@ public sealed class TaxidermyModSystem : ModSystem
         api.RegisterItemClass("TaxidermyMount", typeof(ItemMount));
         api.RegisterBlockClass("TaxidermyMount", typeof(BlockMount));
         api.RegisterBlockEntityClass("TaxidermyMount", typeof(BEMount));
+        // Auto boxes test (2026-10-05): the invisible filler a mount's box reaches into (src/autoboxes/).
+        api.RegisterBlockClass("TaxidermyAutoBoxesFiller", typeof(BlockAutoBoxesFiller));
+        api.RegisterBlockEntityClass("TaxidermyAutoBoxesFiller", typeof(BEAutoBoxesFiller));
         api.RegisterItemClass("TaxidermyHide", typeof(ItemTaxidermyHide));
         api.RegisterCollectibleBehaviorClass("TaxidermyHeadSkinning", typeof(BehaviorHeadSkinning));
         api.RegisterBlockClass("TaxidermySkinnedHead", typeof(BlockSkinnedHead));
@@ -165,7 +181,8 @@ public sealed class TaxidermyModSystem : ModSystem
 
         BarrelPatch.Apply(api);
         api.Event.MatchesGridRecipe += CoatsMatchInGrid;
-        api.Network.RegisterChannel(Channel).RegisterMessageType<HeadAdjustPacket>().RegisterMessageType<OpenAdjustPacket>();
+        api.Network.RegisterChannel(Channel).RegisterMessageType<HeadAdjustPacket>().RegisterMessageType<OpenAdjustPacket>().RegisterMessageType<DisplayBoxPacket>();
+        HeadPeltBoxes.Start(api);   // auto boxes test: heads and pelts in vanilla blocks
     }
 
     /// <summary>The grid's mount recipe: refused when the head and the pelt are different coats (Specimen.CoatsMatch).</summary>
@@ -179,9 +196,16 @@ public sealed class TaxidermyModSystem : ModSystem
 
     public override void StartClientSide(ICoreClientAPI capi)
     {
+        DisplayMeshes.Clear();
+        MountOutline = Config.MountOutline;
+        ListenForClientConfigReloads(capi);
         capi.Network.GetChannel(Channel).SetMessageHandler<OpenAdjustPacket>(p => OnOpenAdjust(capi, p));
         MountMesher.PrepareCaches(capi);
         ItemTaxidermyHide.PrepareCaches(capi);
+        HeadPeltBoxes.StartClient(capi);
+        // ONE handbook page for the mounts, flipping through the animals, instead of one per animal (Calm, 2026-10-15;
+        // registered in BuildCreativeStacks). Tools/Materials Kit/src/HandbookGroups.cs.
+        HandbookGroups.Apply(capi, "taxidermy.handbookgroups");
     }
 
     /// <summary>
@@ -215,6 +239,7 @@ public sealed class TaxidermyModSystem : ModSystem
         api.StoreModConfig(Config, TaxidermyConfig.FileName);
         ListenForConfigReloads(api);
         api.Network.GetChannel(Channel).SetMessageHandler<HeadAdjustPacket>(OnHeadAdjust);
+        HeadPeltBoxes.StartServer(api);
     }
 
     /// <summary>
@@ -395,7 +420,27 @@ public sealed class TaxidermyModSystem : ModSystem
         if (raw != null) raw.CreativeInventoryStacks = Lists(l => l.raws);
         if (preserved != null) preserved.CreativeInventoryStacks = Lists(l => l.preserveds);
         if (mount != null) mount.CreativeInventoryStacks = Lists(l => l.mounts);
+        // one handbook page per animal (Calm, 2026-10-15: "deer, pigs etc"), cycling its species and coats
+        // - by the definition's group, so a modder's animal can join a page (AnimalDefinition.Group)
+        if (mount != null) HandbookGroups.Register(mount, stack => Find(Specimen.Of(stack))?.GroupCode ?? "",
+            stack => Find(Specimen.Of(stack)) is { } def ? Lang.Get("taxidermy:mount-group", AnimalTypeName(def)) : null);
+        // every page of ours links the guide (Calm, 2026-10-16)
+        foreach (var page in new CollectibleObject[] { raw, preserved, mount }.Concat(hides.Keys))
+            if (page != null) HandbookGroups.AddSection(page, "taxidermy:handbook-guide-title", capi => Lang.Get("taxidermy:handbook-guide-text"));
         api.Logger.Event("[Taxidermy] {0} creative head(s) per state, in {1} tab(s): {2}", count, byTab.Count, string.Join(", ", byTab.Keys));
+    }
+
+    /// <summary>
+    /// An animal group's name for its handbook page ("deer" -> "Deer"): lang <c>taxidermy:animaltype-&lt;group&gt;</c>, then
+    /// <c>&lt;definition's domain&gt;:animaltype-&lt;group&gt;</c>, else the group with a capital and spaces.
+    /// </summary>
+    private static string AnimalTypeName(AnimalDefinition def)
+    {
+        string group = def.GroupCode;
+        foreach (var key in new[] { "taxidermy:animaltype-" + group, new AssetLocation(def.Code ?? "").Domain + ":animaltype-" + group })
+            if (Lang.HasTranslation(key)) return Lang.Get(key);
+        string name = group.Replace('-', ' ');
+        return name.Length == 0 ? name : char.ToUpperInvariant(name[0]) + name.Substring(1);
     }
 
     private static JsonItemStack Stack(Item item, ITreeAttribute data)
@@ -491,6 +536,32 @@ public sealed class TaxidermyModSystem : ModSystem
         sapi.Event.RegisterEventBusListener(onSaved, 0.5, "configlib:" + id + ":config-saved");
     }
 
+    private long pendingClientReload;
+
+    /// <summary>
+    /// The client setting (MountOutline) reloads live too: the same three manager events on the client, deferred and
+    /// re-armed like the server's. Mounts read it every time they are aimed at, so it shows at once.
+    /// </summary>
+    private void ListenForClientConfigReloads(ICoreClientAPI capi)
+    {
+        EventBusListenerDelegate onSaved = delegate (string eventName, ref EnumHandling handling, IAttribute data)
+        {
+            if (pendingClientReload != 0) capi.Event.UnregisterCallback(pendingClientReload);
+            pendingClientReload = capi.Event.RegisterCallback(_ =>
+            {
+                pendingClientReload = 0;
+                int now = TaxidermyConfig.Load(capi).MountOutline;
+                if (now == MountOutline) return;
+                MountOutline = now;
+                capi.Logger.Notification("[Taxidermy] mount outline now {0}", now);
+            }, 50);
+        };
+        string id = Mod.Info.ModID;
+        capi.Event.RegisterEventBusListener(onSaved, 0.5, "imm." + id);
+        capi.Event.RegisterEventBusListener(onSaved, 0.5, "configkit:" + id + ":config-saved");
+        capi.Event.RegisterEventBusListener(onSaved, 0.5, "configlib:" + id + ":config-saved");
+    }
+
     private void ReloadConfig(ICoreServerAPI sapi, string savedBy)
     {
         var now = TaxidermyConfig.Load(sapi);
@@ -519,6 +590,21 @@ public sealed class TaxidermyModSystem : ModSystem
 
     public AnimalDefinition Find(string entityCode) => Animals.FirstOrDefault(d => d.Matches(entityCode));
 
+    /// <summary>
+    /// Find(data), kept per data tree - the mount and head items ask every frame for every one drawn (Calm, 2026-10-09:
+    /// performance). Redone when the definitions are reloaded (Animals is a new list then).
+    /// </summary>
+    public AnimalDefinition FindCached(ITreeAttribute data)
+    {
+        if (data == null) return null;
+        if (found.TryGetValue(data, out var hit) && ReferenceEquals(hit.Item1, Animals)) return hit.Item2;
+        var def = Find(data);
+        found.AddOrUpdate(data, Tuple.Create(Animals, def));
+        return def;
+    }
+
+    private readonly System.Runtime.CompilerServices.ConditionalWeakTable<ITreeAttribute, Tuple<IReadOnlyList<AnimalDefinition>, AnimalDefinition>> found = new();
+
     /// <summary>By the saved definition code first, then by entity code as a fallback for a renamed definition.</summary>
     public AnimalDefinition Find(ITreeAttribute data)
     {
@@ -530,6 +616,7 @@ public sealed class TaxidermyModSystem : ModSystem
     public override void Dispose()
     {
         BarrelPatch.Remove();
+        HandbookGroups.Remove();
         if (api is Vintagestory.API.Client.ICoreClientAPI capi)
         {
             MountMesher.Clear(capi);

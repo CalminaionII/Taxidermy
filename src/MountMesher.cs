@@ -123,10 +123,25 @@ public static class MountMesher
         return mesh;
     }
 
+    // ------------------------------------------------------------------ asked every frame (Calm, 2026-10-09: performance)
+
+    /// <summary>A specimen's mesh keys, worked out once per data tree - the item refs are asked every frame for every mount
+    /// or head drawn, and building the keys each time made garbage every frame. Redone if its definition or scale changes.</summary>
+    private sealed class Keys { public AnimalDefinition Def; public float Scale; public string Mount, Head; }
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<ITreeAttribute, Keys> keysOf = new();
+
+    private static Keys KeysOf(ITreeAttribute data, AnimalDefinition def)
+    {
+        if (keysOf.TryGetValue(data, out var k) && k.Def == def && k.Scale == def.Scale) return k;
+        k = new Keys { Def = def, Scale = def.Scale, Mount = MountKey(data, def), Head = HeadKey(data, def) };
+        keysOf.AddOrUpdate(data, k);
+        return k;
+    }
+
     public static MultiTextureMeshRef GetHeadItemMesh(ICoreClientAPI capi, ITreeAttribute data, AnimalDefinition def)
     {
         var refs = ObjectCacheUtil.GetOrCreate(capi, HeadItemCacheKey, () => new Dictionary<string, MultiTextureMeshRef>());
-        string key = HeadKey(data, def);
+        string key = KeysOf(data, def).Head;
         if (refs.TryGetValue(key, out var cached)) return cached;
         var source = GetHeadMesh(capi, data, def);
         if (source == null || source.VerticesCount == 0) return null;
@@ -395,7 +410,7 @@ public static class MountMesher
     public static MultiTextureMeshRef GetItemMesh(ICoreClientAPI capi, ITreeAttribute data, AnimalDefinition def)
     {
         var refs = ObjectCacheUtil.GetOrCreate(capi, ItemCacheKey, () => new Dictionary<string, MultiTextureMeshRef>());
-        string key = MountKey(data, def);
+        string key = KeysOf(data, def).Mount;
         if (refs.TryGetValue(key, out var cached)) return cached;
 
         var source = Get(capi, data, def);
@@ -462,23 +477,46 @@ public static class MountMesher
 
         var pose = def.PoseByCode(data.GetString("pose"));
         float[] matrices = null;
-        if (!string.IsNullOrEmpty(pose.Animation))
+        // Joints even for a pose without an animation: they say which moving part (body, each leg, neck, head, tail)
+        // every vertex belongs to - the parts the mount's collision is built from (2026-10-06).
+        bool jointed = false;
+        if (!string.IsNullOrEmpty(pose.Animation) || shape.Animations?.Length > 0)
         {
-            shape.InitForAnimations(capi.Logger, logName);
+            try { shape.InitForAnimations(capi.Logger, logName); jointed = true; }
+            catch (Exception e) { capi.Logger.Warning("[Taxidermy] No joints for {0}: {1}", entityCode, e.Message); }
+        }
+        if (jointed && !string.IsNullOrEmpty(pose.Animation))
+        {
             matrices = Evaluate(capi, shape, pose, attachments.Length > 0, entityCode);
+        }
+        // The head's joints (the "head" element found as for head trophies, and everything inside it) - for the
+        // head-only mount outline. A head with no joint of its own takes its parent's, so it may bring the neck.
+        HashSet<int> headJoints = null;
+        if (jointed)
+        {
+            var head = FindHead(shape.Elements, new List<ShapeElement>(), HeadWords);
+            if (head != null)
+            {
+                headJoints = new HashSet<int>();
+                void Collect(ShapeElement e) { headJoints.Add(e.JointId); foreach (var c in e.Children ?? []) Collect(c); }
+                Collect(head);
+            }
         }
 
         var texSource = new AtlasSource(capi, textures, baseKeys, data.GetInt("textureIndex"), entityCode);
         float scale = props.Client.Size * def.Scale;
+        int[] joints = null;
         MeshData Tesselate()
         {
             capi.Tesselator.TesselateShape(new TesselationMetaData
             {
                 TypeForLogging = logName,
                 TexSource = texSource,
-                WithJointIds = matrices != null,
+                WithJointIds = jointed,
             }, shape, out var m);
             if (matrices != null) ApplyJoints(m, matrices);
+            if (m.CustomInts?.Values != null && m.CustomInts.Count >= m.VerticesCount)
+                joints = m.CustomInts.Values.Take(m.VerticesCount).ToArray();
             m.CustomInts = null;
             if (scale != 1) m.Scale(new Vec3f(0.5f, 0, 0.5f), scale, scale, scale);
             return m;
@@ -499,8 +537,21 @@ public static class MountMesher
         if (reference.VerticesCount > 0) mesh.Translate(0.5f - (minX + maxX) / 2, -minY, 0.5f - (minZ + maxZ) / 2);
 
         if (mesh.VerticesCount == 0) capi.Logger.Warning("[Taxidermy] Empty mesh for {0} pose {1}", entityCode, pose.Code);
+        if (joints != null) PartsOfMesh.AddOrUpdate(mesh, joints);
+        if (headJoints != null) HeadOfMesh.AddOrUpdate(mesh, headJoints);
         return mesh;
     }
+
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<MeshData, HashSet<int>> HeadOfMesh = new();
+
+    /// <summary>The joints that make up the head of a mount mesh from <see cref="Get"/>, or null (no joints / no head found).</summary>
+    public static HashSet<int> HeadJointsOf(MeshData shared) => shared != null && HeadOfMesh.TryGetValue(shared, out var h) ? h : null;
+
+    /// <summary>Per built mount mesh: the joint (moving part) of every vertex, in vertex order. A Clone keeps the order.</summary>
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<MeshData, int[]> PartsOfMesh = new();
+
+    /// <summary>The joint of every vertex of a mount mesh from <see cref="Get"/>, or null (no joints, a placeholder).</summary>
+    public static int[] JointsOf(MeshData shared) => shared != null && PartsOfMesh.TryGetValue(shared, out var j) ? j : null;
 
     /// <summary>
     /// The joint matrices for one frame. Vanilla's animator advances by dt and eases in over

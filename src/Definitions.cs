@@ -143,6 +143,16 @@ public sealed class AnimalDefinition
     public string CreativeTab { get; set; }
 
     /// <summary>
+    /// Which handbook page its mounts share. Left out: its own code without the domain ("taxidermy:deer" -> "deer"), so
+    /// each definition has its own page. A modder sets "bear" to put their animal on the game's "Bear mounts" page, or one
+    /// word on several definitions to share a page of their own (Calm, 2026-10-16: "follow suit and use the group" - as
+    /// Figurines' creatures). Named by lang taxidermy:animaltype-&lt;group&gt;, then &lt;domain&gt;:animaltype-&lt;group&gt;.
+    /// </summary>
+    public string Group { get; set; }
+
+    public string GroupCode => new AssetLocation(!string.IsNullOrEmpty(Group) ? Group : Code ?? "").Path;
+
+    /// <summary>
     /// HEAD skinning only - the animal's own carcass harvest is untouched. Everything skinning a
     /// raw head gives, the hide included since 2026-09-30 (Calm: "put it in the drop list like
     /// everything else"), each entry with its own chance. A list with no hide in it - or none at

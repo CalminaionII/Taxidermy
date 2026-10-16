@@ -60,11 +60,8 @@ public sealed class BESkinnedHead : BlockEntityGenericContainer
         if (cached == null)
         {
             var data = headData;
-            var pos = Pos.Copy();
-            capi.Event.EnqueueMainThreadTask(() =>
-            {
-                if (MountMesher.GetHeadMesh(capi, data, def, true) != null) capi.World.BlockAccessor.MarkBlockDirty(pos);
-            }, "taxidermy-skinned-head-mesh");
+            // the flat (ground) version only - kept apart from the both-versions build heads queue
+            DisplayMeshes.Queue(capi, "headflat|" + MountMesher.IdentityKey(data) + "|" + def.Code + "|" + def.Scale, Pos, () => MountMesher.GetHeadMesh(capi, data, def, true));
             return true;
         }
         var mesh = ItemHead.ForGround(cached.Clone());
