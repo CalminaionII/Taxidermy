@@ -187,7 +187,8 @@ public sealed class GuiDialogMount : GuiDialog
     private void OnNumber(string key, string text)
     {
         if (filling) return;
-        if (!float.TryParse(text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float v)) return;
+        // "NaN" and "Infinity" parse as numbers too, and would make the animal vanish
+        if (!float.TryParse(text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float v) || !float.IsFinite(v)) return;
         switch (key)
         {
             case "x": offX = v; break;
@@ -201,7 +202,7 @@ public sealed class GuiDialogMount : GuiDialog
 
     private bool OnReset()
     {
-        offX = offY = offZ = tiltDeg = 0;
+        offX = offY = offZ = rotDeg = tiltDeg = 0;
         Fill();
         Send();
         return true;

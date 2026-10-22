@@ -179,16 +179,20 @@ public sealed class TaxidermyModSystem : ModSystem
         // has to exist in the registry wherever an entity carrying it is deserialised.
         api.RegisterEntityBehaviorClass(BehaviorCode, typeof(EntityBehaviorTaxidermy));
 
-        BarrelPatch.Apply(api);
-        api.Event.MatchesGridRecipe += CoatsMatchInGrid;
+        BarrelPatch.Apply(api);   // also the coat check on grid recipes (BarrelPatch.CoatsPostfix)
         api.Network.RegisterChannel(Channel).RegisterMessageType<HeadAdjustPacket>().RegisterMessageType<OpenAdjustPacket>().RegisterMessageType<DisplayBoxPacket>();
         HeadPeltBoxes.Start(api);   // auto boxes test: heads and pelts in vanilla blocks
     }
 
-    /// <summary>The grid's mount recipe: refused when the head and the pelt are different coats (Specimen.CoatsMatch).</summary>
-    private static bool CoatsMatchInGrid(IPlayer player, GridRecipe recipe, ItemSlot[] ingredients, int gridWidth)
+    /// <summary>
+    /// The grid's mount recipe: refused when the head and the pelt are different coats (Specimen.CoatsMatch).
+    /// Called from a postfix on GridRecipe.Matches (BarrelPatch.CoatsPostfix), not the MatchesGridRecipe event:
+    /// with several listeners on that event only the LAST one's answer counts, so another mod's (or the game's
+    /// own trait check's) "yes" could override this "no" - the Materials Kit saw exactly that in game.
+    /// </summary>
+    internal static bool CoatsMatchInGrid(GridRecipe recipe, ItemSlot[] ingredients)
     {
-        if (recipe?.Output?.ResolvedItemStack?.Collectible?.Code?.ToString() != Specimen.MountItem) return true;
+        if (ingredients == null || recipe?.Output?.ResolvedItemStack?.Collectible?.Code?.ToString() != Specimen.MountItem) return true;
         var head = ingredients.FirstOrDefault(s => s?.Itemstack?.Collectible is ItemHead)?.Itemstack;
         var pelt = ingredients.FirstOrDefault(s => s?.Itemstack?.Collectible is ItemTaxidermyHide)?.Itemstack;
         return Specimen.CoatsMatch(head, pelt);
@@ -258,6 +262,7 @@ public sealed class TaxidermyModSystem : ModSystem
         var stack = mount.Inventory[0]?.Itemstack;
         var data = Specimen.Of(stack);
         if (stack?.Collectible is not ItemHead || data == null) return;
+        if (!AllFinite(p.OffX, p.OffY, p.OffZ, p.RotationDeg, p.TiltDeg)) return;
         data.SetFloat("offx", GameMath.Clamp(p.OffX, -16, 16) / 16f);
         data.SetFloat("offy", GameMath.Clamp(p.OffY, -16, 16) / 16f);
         data.SetFloat("offz", GameMath.Clamp(p.OffZ, -16, 16) / 16f);
@@ -266,6 +271,12 @@ public sealed class TaxidermyModSystem : ModSystem
         mount.Inventory[0].MarkDirty();
         mount.MarkDirty(true);
     }
+
+    /// <summary>
+    /// For the Adjust packets: NaN and infinity slip through GameMath.Clamp and Mod (every comparison
+    /// with NaN is false), and a NaN offset or turn makes the animal vanish - and is saved that way.
+    /// </summary>
+    internal static bool AllFinite(params float[] values) => values.All(float.IsFinite);
 
     /// <summary>
     /// Definitions come from assets, so this cannot happen in Start() - assets do not exist
@@ -617,6 +628,7 @@ public sealed class TaxidermyModSystem : ModSystem
     {
         BarrelPatch.Remove();
         HandbookGroups.Remove();
+        if (api != null) HeadPeltBoxes.Dispose(api.Side);
         if (api is Vintagestory.API.Client.ICoreClientAPI capi)
         {
             MountMesher.Clear(capi);

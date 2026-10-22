@@ -3,6 +3,7 @@ using Vintagestory.API.Common;
 using Vintagestory.API.Common.Entities;
 using Vintagestory.API.Datastructures;
 using Vintagestory.API.MathTools;
+using Vintagestory.API.Util;
 using Vintagestory.GameContent;
 
 namespace Taxidermy;
@@ -61,7 +62,13 @@ public sealed class BehaviorBoneCarve : CollectibleBehavior, IContainedInteracta
 
     public bool OnContainedInteractStart(BlockEntityContainer be, ItemSlot slot, IPlayer byPlayer, BlockSelection blockSel)
     {
-        if (!Wants(byPlayer)) return Vanilla?.OnContainedInteractStart(be, slot, byPlayer, blockSel) ?? false;
+        if (!Wants(byPlayer))
+        {
+            // A needle carve whose Stop never came (the pile taken away mid-cut, the player gone)
+            // would otherwise still be marked, and this flute carve would finish as a needle.
+            lock (carving) carving.Remove(byPlayer?.PlayerUID ?? "");
+            return Vanilla?.OnContainedInteractStart(be, slot, byPlayer, blockSel) ?? false;
+        }
         lock (carving) carving.Add(byPlayer.PlayerUID);
         byPlayer.Entity.StartAnimation(Anim);
         be.Api.World.PlaySoundAt(Sound, blockSel.Position, 0, byPlayer);
@@ -119,7 +126,8 @@ public sealed class BehaviorBoneCarve : CollectibleBehavior, IContainedInteracta
 
     public WorldInteraction[] GetContainedInteractionHelp(BlockEntityContainer be, ItemSlot slot, IPlayer forPlayer, BlockSelection blockSel)
     {
-        var knives = be.Api.World.Items.Where(i => i.Tool == EnumTool.Knife).Select(i => new ItemStack(i)).ToArray();
+        // Asked every frame while the bone is looked at: the knives are listed once, not searched for each time.
+        var knives = ObjectCacheUtil.GetOrCreate(be.Api, "taxidermy-knives", () => be.Api.World.Items.Where(i => i?.Tool == EnumTool.Knife).Select(i => new ItemStack(i)).ToArray());
         var vanilla = Vanilla?.GetContainedInteractionHelp(be, slot, forPlayer, blockSel) ?? [];
         return [.. vanilla, new WorldInteraction { ActionLangCode = "taxidermy:blockhelp-carveneedle", MouseButton = EnumMouseButton.Right, Itemstacks = knives }];
     }

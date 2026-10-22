@@ -359,7 +359,7 @@ public sealed class BEMount : BlockEntity, IAutoBoxesOwner
         var (y1, y2) = Cap(v[1], v[4]);
         var (z1, z2) = Cap(v[2], v[5]);
         SetReach(new Cuboidf(x1, y1, z1, x2, y2, z2), parts.ToArray());
-        heldFillers = AutoBoxes.Sync(Api.World, Pos, reachPieces.Keys, heldFillers);
+        heldFillers = AutoBoxes.Sync(Api.World, Pos, reachPieces.Keys, heldFillers, fromPlayer);
         MarkDirty(true);
     }
 
@@ -457,6 +457,7 @@ public sealed class BEMount : BlockEntity, IAutoBoxesOwner
         // would repeat for every number dragged.
         if (Api.World.Claims.TestAccess(fromPlayer, Pos, EnumBlockAccessFlags.BuildOrBreak) != EnumWorldAccessResponse.Granted) return;
         var p = SerializerUtil.Deserialize<MountAdjustPacket>(data);
+        if (p == null || !TaxidermyModSystem.AllFinite(p.OffX, p.OffY, p.OffZ, p.RotationDeg, p.TiltDeg)) return;
         var def = Api.ModLoader.GetModSystem<TaxidermyModSystem>().Find(Data);
         if (def != null && def.Poses.Any(q => q.Code == p.Pose)) Data.SetString("pose", p.Pose);
         OffX = GameMath.Clamp(p.OffX, -16, 16) / 16f;

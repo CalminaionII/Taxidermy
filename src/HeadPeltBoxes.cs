@@ -261,6 +261,19 @@ public static class HeadPeltBoxes
         __result = __instance is BlockAntlerMount && __result is { Length: > 0 } ? [.. __result, .. own] : own;
     }
 
+    /// <summary>
+    /// Leaving a world (either side): these are static, so without this a head in the NEXT world at the
+    /// same coordinates would be solid in this world's box until it was measured again.
+    /// </summary>
+    public static void Dispose(EnumAppSide side)
+    {
+        OwnPiece.Clear();
+        if (side != EnumAppSide.Client) return;
+        MeasuredAt.Clear();   // client main thread only - never from the singleplayer server's thread
+        Pending.Clear();
+        capi = null;
+    }
+
     // ── Server ───────────────────────────────────────────────────────────────
 
     public static void StartServer(ICoreServerAPI sapi)
@@ -280,6 +293,6 @@ public static class HeadPeltBoxes
         var (z1, z2) = Fit(Math.Min(p.Z1, p.Z2), Math.Max(p.Z1, p.Z2));
         var box = new Cuboidf(x1, y1, z1, x2, y2, z2);
         Remember(pos, box);
-        AutoBoxes.SyncCarried(sapi.World, pos, box, Solid);
+        AutoBoxes.SyncCarried(sapi.World, pos, box, Solid, byPlayer: player);
     }
 }

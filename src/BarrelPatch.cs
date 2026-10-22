@@ -34,6 +34,12 @@ public static class BarrelPatch
         if (harmony != null) return;
         harmony = new Harmony(HarmonyId);
         HeadPeltBoxes.Patch(harmony, api);   // auto boxes test: outlines of heads and pelts in vanilla blocks
+
+        // A mount recipe takes only a pelt in the head's own coat (TaxidermyModSystem.CoatsMatchInGrid).
+        var matches = AccessTools.Method(typeof(GridRecipe), nameof(GridRecipe.Matches), [typeof(IPlayer), typeof(IWorldAccessor), typeof(ItemSlot[]), typeof(int)]);
+        if (matches != null) harmony.Patch(matches, postfix: new HarmonyMethod(typeof(BarrelPatch), nameof(CoatsPostfix)));
+        else api.Logger.Error("[Taxidermy] GridRecipe.Matches not found - a head could be crafted with a pelt of another coat");
+
         var target = AccessTools.Method(typeof(BarrelRecipe), nameof(BarrelRecipe.TryCraftNow));
         if (target == null)
         {
@@ -63,6 +69,12 @@ public static class BarrelPatch
         var interact = AccessTools.Method(typeof(BlockAntlerMount), nameof(BlockAntlerMount.OnBlockInteractStart));
         if (interact != null) harmony.Patch(interact, prefix: new HarmonyMethod(typeof(BarrelPatch), nameof(AntlerMountInteract)));
         else api.Logger.Error("[Taxidermy] BlockAntlerMount.OnBlockInteractStart not found - heads on antler mounts cannot be adjusted");
+    }
+
+    /// <summary>Only judges a recipe that has already matched; positional names, as the game's may change.</summary>
+    public static void CoatsPostfix(GridRecipe __instance, ItemSlot[] __2, ref bool __result)
+    {
+        if (__result && !TaxidermyModSystem.CoatsMatchInGrid(__instance, __2)) __result = false;
     }
 
     public static void RipStart() => EntityBehaviorTaxidermy.RipHarvesting = true;
