@@ -90,8 +90,10 @@ public static class AutoBoxes
     /// fluid; a space with anything in it, or another owner's filler, stays as it is and that part
     /// of the box is simply not clickable. Fillers no longer wanted are removed. Returns the
     /// offsets that now hold this owner's filler - keep it with the owner and pass it back next time.
+    /// <paramref name="byPlayer"/>: whose client sent the box - a NEW filler goes only where they may build
+    /// (see <see cref="MayFill"/>).
     /// </summary>
-    public static List<(int x, int y, int z)> Sync(IWorldAccessor world, BlockPos owner, IEnumerable<(int x, int y, int z)> wanted, IEnumerable<(int x, int y, int z)> held)
+    public static List<(int x, int y, int z)> Sync(IWorldAccessor world, BlockPos owner, IEnumerable<(int x, int y, int z)> wanted, IEnumerable<(int x, int y, int z)> held, IPlayer byPlayer = null)
     {
         var want = new HashSet<(int, int, int)>(wanted.Where(o => o != (0, 0, 0)));
         var result = new List<(int, int, int)>();
@@ -108,6 +110,7 @@ public static class AutoBoxes
             var pos = owner.AddCopy(o.Item1, o.Item2, o.Item3);
             var ba = world.BlockAccessor;
             if (ba.GetBlock(pos, BlockLayersAccess.Solid).Id != 0 || ba.GetBlock(pos, BlockLayersAccess.Fluid).Id != 0) continue;
+            if (!MayFill(world, byPlayer, pos)) continue;
             ba.SetBlock(filler.Id, pos);
             if (ba.GetBlockEntity(pos) is BEAutoBoxesFiller be) be.SetOwner(owner);
             result.Add(o);
@@ -135,7 +138,7 @@ public static class AutoBoxes
     /// box to carry. The owner keeps no list - its fillers are found by looking round it (up to
     /// <paramref name="reach"/> blocks), so a box that shrinks or moves leaves nothing behind.
     /// </summary>
-    public static void SyncCarried(IWorldAccessor world, BlockPos owner, Cuboidf box, bool solid = false, int reach = 7)
+    public static void SyncCarried(IWorldAccessor world, BlockPos owner, Cuboidf box, bool solid = false, int reach = 7, IPlayer byPlayer = null)
     {
         var want = new HashSet<(int, int, int)>(Cut(box).Keys.Where(o => o != (0, 0, 0)));
         var ba = world.BlockAccessor;
@@ -157,10 +160,20 @@ public static class AutoBoxes
                 continue;
             }
             if (ba.GetBlock(pos, BlockLayersAccess.Solid).Id != 0 || ba.GetBlock(pos, BlockLayersAccess.Fluid).Id != 0) continue;
+            if (!MayFill(world, byPlayer, pos)) continue;
             ba.SetBlock(filler.Id, pos);
             if (ba.GetBlockEntity(pos) is BEAutoBoxesFiller be) be.SetOwner(owner, box, solid);
         }
     }
+
+    /// <summary>
+    /// A box reaches up to 6 blocks, so it can cross a land claim border even when the owner block
+    /// itself is the player's own: an invisible, solid filler must not go onto land they may not
+    /// build on. That part of the box is then simply not clickable, as for a space that is not empty.
+    /// No player (a mod calling without one): no check, as before.
+    /// </summary>
+    static bool MayFill(IWorldAccessor world, IPlayer byPlayer, BlockPos pos) =>
+        byPlayer == null || world.Claims.TestAccess(byPlayer, pos, EnumBlockAccessFlags.BuildOrBreak) == EnumWorldAccessResponse.Granted;
 
     /// <summary>Server: removes every filler this owner holds (the owner was broken or picked up).</summary>
     public static void ReleaseAll(IWorldAccessor world, BlockPos owner, IEnumerable<(int x, int y, int z)> held)

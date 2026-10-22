@@ -269,7 +269,8 @@ public sealed class BlockAssembly : Block
             var grass = world.GetItem(new AssetLocation("game:drygrass"));
             return grass == null ? [] : [new WorldInteraction { ActionLangCode = "taxidermy:blockhelp-addgrass", MouseButton = EnumMouseButton.Right, Itemstacks = [new ItemStack(grass)] }];
         }
-        var needles = world.Items.Where(i => i is ItemNeedleThread).Select(i => new ItemStack(i)).ToArray();
+        // Asked every frame while the pile is looked at: the needles are listed once, not searched for each time.
+        var needles = ObjectCacheUtil.GetOrCreate(world.Api, "taxidermy-needles", () => world.Items.Where(i => i is ItemNeedleThread).Select(i => new ItemStack(i)).ToArray());
         return [new WorldInteraction { ActionLangCode = "taxidermy:blockhelp-sew", MouseButton = EnumMouseButton.Right, Itemstacks = needles }];
     }
 }

@@ -32,40 +32,58 @@
 	     barrel would forget which animal it was. See src/BarrelPatch.cs. Harmony is
 	     pardeike/Harmony (MIT), shipped by the game in Lib\; it is not game code. -->
 
-	<!-- THE GAME DLLs, 1.22.7 - the version the test install actually RUNS. If the
-	     launcher moves again these paths and TESTER in tools/deploy.py are the only things
-	     that need changing. -->
+	<!-- WHERE THE GAME DLLS ARE (1.22.7) - the folder holding VintagestoryAPI.dll (with Lib\ and Mods\ inside it).
+
+	     Looked for in this order:
+	       1. gamepath.props next to this file - YOUR PC's game folder. It is in .gitignore, so it never
+	          goes to GitHub. Copy gamepath.props.example to gamepath.props and put your folder in it.
+	       2. the VINTAGE_STORY environment variable (the cloud build uses this).
+	       3. the default below: the Wax Light Launcher install, from E:\Game Mods\Vintage Story Mods (AI)\Taxidermy.
+	     If none of them has the game, the build stops with a message saying which folder it tried.
+	     If the launcher moves again, change gamepath.props (and TESTER in tools/deploy.py). -->
+	<Import Project="gamepath.props" Condition="Exists('gamepath.props')" />
+	<PropertyGroup>
+		<VintageStoryPath Condition="'$(VintageStoryPath)' == '' And '$(VINTAGE_STORY)' != ''">$(VINTAGE_STORY)</VintageStoryPath>
+		<VintageStoryPath Condition="'$(VintageStoryPath)' == ''">..\..\..\Games\Vintage Story\Wax Light Launcher\Wax Light Info\versions\1.22.7</VintageStoryPath>
+	</PropertyGroup>
+
+	<!-- A plain message instead of hundreds of "type not found" errors when the game folder is wrong. -->
+	<Target Name="CheckGameFolder" BeforeTargets="ResolveAssemblyReferences">
+		<Error Condition="!Exists('$(VintageStoryPath)\VintagestoryAPI.dll')"
+		       Text="Vintage Story's game files were not found in: $([System.IO.Path]::GetFullPath($([System.IO.Path]::Combine('$(MSBuildProjectDirectory)', '$(VintageStoryPath)')))) - copy gamepath.props.example to gamepath.props (next to Taxidermy.csproj) and put the folder that contains VintagestoryAPI.dll in it." />
+	</Target>
+
 	<ItemGroup>
 		<Reference Include="0Harmony">
-			<HintPath>..\..\..\Games\Vintage Story\Story Forge\Versions\1.22.7\Lib\0Harmony.dll</HintPath>
+			<HintPath>$(VintageStoryPath)\Lib\0Harmony.dll</HintPath>
 			<Private>False</Private>
 		</Reference>
 		<Reference Include="protobuf-net">
-			<HintPath>..\..\..\Games\Vintage Story\Story Forge\Versions\1.22.7\Lib\protobuf-net.dll</HintPath>
-			<Private>false</Private>
+			<HintPath>$(VintageStoryPath)\Lib\protobuf-net.dll</HintPath>
+			<Private>False</Private>
 		</Reference>
 		<Reference Include="Newtonsoft.Json">
-			<HintPath>..\..\..\Games\Vintage Story\Story Forge\Versions\1.22.7\Lib\Newtonsoft.Json.dll</HintPath>
+			<HintPath>$(VintageStoryPath)\Lib\Newtonsoft.Json.dll</HintPath>
 			<Private>False</Private>
 		</Reference>
 		<Reference Include="Vintagestory">
-			<HintPath>..\..\..\Games\Vintage Story\Story Forge\Versions\1.22.7\Vintagestory.dll</HintPath>
+			<HintPath>$(VintageStoryPath)\Vintagestory.dll</HintPath>
 			<Private>False</Private>
 		</Reference>
 		<Reference Include="VintagestoryAPI">
-			<HintPath>..\..\..\Games\Vintage Story\Story Forge\Versions\1.22.7\VintagestoryAPI.dll</HintPath>
+			<HintPath>$(VintageStoryPath)\VintagestoryAPI.dll</HintPath>
 			<Private>False</Private>
 		</Reference>
 		<Reference Include="VintagestoryLib">
-			<HintPath>..\..\..\Games\Vintage Story\Story Forge\Versions\1.22.7\VintagestoryLib.dll</HintPath>
+			<HintPath>$(VintageStoryPath)\VintagestoryLib.dll</HintPath>
 			<Private>False</Private>
 		</Reference>
 		<Reference Include="VSSurvivalMod">
-			<HintPath>..\..\..\Games\Vintage Story\Story Forge\Versions\1.22.7\Mods\VSSurvivalMod.dll</HintPath>
+			<HintPath>$(VintageStoryPath)\Mods\VSSurvivalMod.dll</HintPath>
 			<Private>False</Private>
 		</Reference>
 		<Reference Include="VSEssentials">
-			<HintPath>..\..\..\Games\Vintage Story\Story Forge\Versions\1.22.7\Mods\VSEssentials.dll</HintPath>
+			<HintPath>$(VintageStoryPath)\Mods\VSEssentials.dll</HintPath>
 			<Private>False</Private>
 		</Reference>
 	</ItemGroup>

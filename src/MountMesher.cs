@@ -82,7 +82,17 @@ public static class MountMesher
         var cache = ObjectCacheUtil.GetOrCreate(capi, CacheKey, () => new Dictionary<string, MeshData>());
         string key = MountKey(data, def);
         if (cache.TryGetValue(key, out var cached)) return cached;
-        var mesh = Build(capi, data, def);
+        MeshData mesh;
+        try { mesh = Build(capi, data, def); }
+        catch (Exception e)
+        {
+            // The mount and head ITEMS ask here every frame they are drawn (hotbar, inventory, hand),
+            // with nothing round them to catch it - a model that cannot be built must not take the
+            // game down. Remembered as null like a failed hide, so it is logged once, not every frame.
+            capi.Logger.Error("[Taxidermy] Cannot build the mount for {0}: {1}", data.GetString("entityCode"), e);
+            cache[key] = null;
+            return null;
+        }
         if (mesh != null) cache[key] = mesh;
         return mesh;
     }
