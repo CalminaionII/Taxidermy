@@ -165,7 +165,8 @@ public sealed class BlockAssembly : Block
     // First for Tailor's Delight (a player asked; Calm: "they have to use [its] twine"), then our own bare bone needle too
     // (Calm: "try it the way that we have done with Tailor's Delight needle"). Any item whose JSON has
     //     "attributes": { "taxidermyNeedle": { "thread": "tailorsdelight:twine-*", "threadMultiplier": 1 } }
-    // ("thread" may be a list - any of them will do, mixed if need be)
+    // ("thread" may be a list - any of them will do, mixed if need be; "threadExcept" lists codes that never count, as
+    // Tailor's Delight's gilded and silvered thread: Calm, "it may use that automatically when it shouldn't")
     // sews here: the needle is kept and the thread is taken from the hotbar or backpack - by the animal's size, half the
     // stitches the old needle used (1 small, 2 medium, 3 large, 4 huge; Calm: "the same system of how many it needs ...
     // depending on size", then "might need to half it"), times threadMultiplier (default 1). No "thread": nothing is taken. Tailor's Delight's gets the attribute from
@@ -177,14 +178,18 @@ public sealed class BlockAssembly : Block
     public const string NeedleAttribute = "taxidermyNeedle";
 
     /// <summary>A kept needle: the threads it sews with (empty = none needed) and how much per mount.</summary>
-    internal sealed record NeedleUse(AssetLocation[] Threads, int Multiplier)
+    internal sealed record NeedleUse(AssetLocation[] Threads, AssetLocation[] Except, int Multiplier)
     {
         public bool NeedsThread => Threads.Length > 0;
-        public bool Takes(AssetLocation code) => Threads.Any(t => WildcardUtil.Match(t, code));
+        public bool Takes(AssetLocation code) =>
+            Threads.Any(t => WildcardUtil.Match(t, code)) && !Except.Any(e => WildcardUtil.Match(e, code));
     }
 
-    /// <summary>Our bare bone needle, when its JSON says nothing else: flax twine or Tailor's Delight's twine, by size (ThreadFor).</summary>
-    private static readonly NeedleUse BareNeedle = new([new AssetLocation("game:flaxtwine"), new AssetLocation("tailorsdelight:twine-*")], 1);
+    /// <summary>Tailor's Delight's gilded and silvered thread - made with gold and silver, never used up on a mount.</summary>
+    private static readonly AssetLocation[] PreciousThread = [new("tailorsdelight:twine-gold"), new("tailorsdelight:twine-silver")];
+
+    /// <summary>Our bare bone needle, when its JSON says nothing else: flax twine or Tailor's Delight's twine and thread, by size (ThreadFor).</summary>
+    private static readonly NeedleUse BareNeedle = new([new AssetLocation("game:flaxtwine"), new AssetLocation("tailorsdelight:twine-*")], PreciousThread, 1);
 
     /// <summary>A needle that is kept and sews with separate thread, or null (not a needle, or the threaded one).</summary>
     internal static NeedleUse KeptNeedle(CollectibleObject collectible)
@@ -195,7 +200,8 @@ public sealed class BlockAssembly : Block
         var thread = attribute["thread"];
         string[] codes = thread.IsArray() ? thread.AsArray<string>([]) : [thread.AsString(null)];
         var threads = codes.Where(c => !string.IsNullOrWhiteSpace(c)).Select(c => new AssetLocation(c)).ToArray();
-        return new NeedleUse(threads, Math.Max(1, attribute["threadMultiplier"].AsInt(1)));
+        var except = attribute["threadExcept"].AsArray<string>([]).Where(c => !string.IsNullOrWhiteSpace(c)).Select(c => new AssetLocation(c)).ToArray();
+        return new NeedleUse(threads, except, Math.Max(1, attribute["threadMultiplier"].AsInt(1)));
     }
 
     /// <summary>The player's hotbar and backpack slots holding a thread this needle takes.</summary>
@@ -267,7 +273,7 @@ public sealed class BlockAssembly : Block
                 {
                     if (world.Api is ICoreClientAPI noThread)
                         noThread.TriggerIngameError(this, "taxidermy-needthread",
-                            Text("taxidermy:assembly-needthread", "Needs {0} twine in your hotbar or backpack to sew it", ThreadFor(be, use)));
+                            Text("taxidermy:assembly-needthread", "Needs {0} twine or thread in your hotbar or backpack to sew it", ThreadFor(be, use)));
                     return false;
                 }
                 byPlayer.Entity.StartAnimation(SewAnim);
