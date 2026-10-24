@@ -34,7 +34,21 @@ public static class AssemblyRecipes
     private static bool IsHeadIngredient(CraftingRecipeIngredient ing) => ing?.Code?.Path?.StartsWith("head-") == true && ing.Code.Domain == Specimen.Domain;
     private static bool IsGrassIngredient(CraftingRecipeIngredient ing) => ing?.Code?.ToString() == "game:drygrass";
     private static bool IsToolIngredient(CraftingRecipeIngredient ing) => ing != null && (ing.IsTool || ing.Code?.Path == "sewingkit");
-    private static bool IsPeltIngredient(CraftingRecipeIngredient ing) => ing != null && !IsHeadIngredient(ing) && !IsGrassIngredient(ing) && !IsToolIngredient(ing);
+    private static bool IsPeltIngredient(IWorldAccessor world, CraftingRecipeIngredient ing) =>
+        ing != null && !IsHeadIngredient(ing) && !IsGrassIngredient(ing) && !IsToolIngredient(ing) && !IsThreadIngredient(world, ing);
+
+    /// <summary>
+    /// The thread another mod's needle sews with (BlockAssembly.NeedleAttribute) - the Tailor's Delight mount recipes take
+    /// its twine as well, and that must not be read as the pelt. Worked out once per world from the needles' attributes.
+    /// </summary>
+    private static bool IsThreadIngredient(IWorldAccessor world, CraftingRecipeIngredient ing)
+    {
+        if (ing?.Code == null || world?.Api == null) return false;
+        var threads = ObjectCacheUtil.GetOrCreate(world.Api, "taxidermy-threads", () => world.Items
+            .Select(i => i?.Attributes?[BlockAssembly.NeedleAttribute]?["thread"]?.AsString(null))
+            .Where(t => !string.IsNullOrWhiteSpace(t)).Distinct().Select(t => new AssetLocation(t)).ToArray());
+        return threads.Any(t => t.Equals(ing.Code) || WildcardUtil.Match(t, ing.Code));
+    }
 
     /// <summary>The mount recipe this head and this pelt make together, or null.</summary>
     public static Match Find(IWorldAccessor world, ItemStack head, ItemStack pelt)
@@ -45,7 +59,7 @@ public static class AssemblyRecipes
             if (!IsMountRecipe(r)) continue;
             var ings = r.ResolvedIngredients.Where(i => i != null).ToArray();
             if (!ings.Any(i => IsHeadIngredient(i) && i.SatisfiesAsIngredient(head, false))) continue;
-            if (!ings.Any(i => IsPeltIngredient(i) && i.SatisfiesAsIngredient(pelt, false))) continue;
+            if (!ings.Any(i => IsPeltIngredient(world, i) && i.SatisfiesAsIngredient(pelt, false))) continue;
             int grass = ings.FirstOrDefault(IsGrassIngredient)?.Quantity ?? 4;
             return new Match { Grass = Math.Max(1, grass) };
         }
@@ -59,7 +73,7 @@ public static class AssemblyRecipes
         foreach (var r in world.GridRecipes)
         {
             if (!IsMountRecipe(r)) continue;
-            if (r.ResolvedIngredients.Any(i => IsPeltIngredient(i) && i.SatisfiesAsIngredient(stack, false))) return true;
+            if (r.ResolvedIngredients.Any(i => IsPeltIngredient(world, i) && i.SatisfiesAsIngredient(stack, false))) return true;
         }
         return false;
     }
