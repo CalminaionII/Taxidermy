@@ -367,7 +367,142 @@ public sealed class BEMount : BlockEntity, IAutoBoxesOwner
     {
         if (Api?.Side == EnumAppSide.Server) AutoBoxes.ReleaseAll(Api.World, Pos, heldFillers);
         heldFillers.Clear();
+        Gone();
         base.OnBlockRemoved();
+    }
+
+    public override void OnBlockUnloaded()
+    {
+        Gone();
+        base.OnBlockUnloaded();
+    }
+
+    // ── The head on its own (client) ─────────────────────────────────────────────────────────
+    // Something client side may draw a mount's head itself, moving it as it likes: DrawHeadSeparately
+    // says which mounts, and those leave the head out of the block's mesh and keep it in SeparateHead
+    // instead. Nobody setting it - the normal case - changes nothing: the head is part of the mesh.
+
+    /// <summary>Client: asked on every rebuild. True: the head leaves the block's mesh for <see cref="SeparateHead"/>.</summary>
+    public static System.Func<BEMount, bool> DrawHeadSeparately;
+
+    /// <summary>Client: raised after every rebuild (the head may have been split off, or put back).</summary>
+    public static event Action<BEMount> HeadChanged;
+
+    /// <summary>Client: raised once when the mount is broken or its chunk unloads.</summary>
+    public static event Action<BEMount> MountGone;
+
+    /// <summary>Client: the head, in the block's frame like the mesh, when it was split off; else null.</summary>
+    public MeshData SeparateHead { get; private set; }
+
+    /// <summary>Client: where <see cref="SeparateHead"/> turns from (the back of the head, where the neck is), block frame.</summary>
+    public Vec3f HeadPivot { get; private set; }
+
+    /// <summary>Broken or unloaded.</summary>
+    public bool IsGone { get; private set; }
+
+    /// <summary>Client: rebuild and redraw, after DrawHeadSeparately's answer for this mount changed.</summary>
+    public void RedrawHead()
+    {
+        if (Api?.Side != EnumAppSide.Client || IsGone) return;
+        Rebuild();
+        MarkDirty(true);
+    }
+
+    private void Gone()
+    {
+        if (IsGone) return;
+        IsGone = true;
+        if (Api?.Side == EnumAppSide.Client) Notify(MountGone);
+    }
+
+    /// <summary>Whatever listens must never break a mount.</summary>
+    private void Notify(Action<BEMount> handler)
+    {
+        if (handler == null) return;
+        try { handler(this); }
+        catch (Exception e) { Api?.Logger.Error("[Taxidermy] A mount listener failed at {0}: {1}", Pos, e); }
+    }
+
+    /// <summary>
+    /// Split the head off the built mesh: two copies of it, the head's faces folded to a point in the one the block keeps and
+    /// every other face folded in the other - so neither copy loses any of the data the chunk mesh needs. The head's faces are
+    /// those of its joints (MountMesher.HeadJointsOf, the same as the head-only outline).
+    /// </summary>
+    private void SplitHead(MeshData shared, float stand)
+    {
+        var joints = MountMesher.JointsOf(shared);
+        var headJoints = MountMesher.HeadJointsOf(shared);
+        var built = mesh;
+        if (joints == null || headJoints == null || built == null || joints.Length != built.VerticesCount
+            || built.VerticesPerFace != 4 || built.VerticesCount % 4 != 0) return;
+
+        int faces = built.VerticesCount / 4, headFaces = 0;
+        var isHead = new bool[faces];
+        for (int f = 0; f < faces; f++)
+        {
+            isHead[f] = headJoints.Contains(joints[f * 4]);   // a face is one element's side, so one joint
+            if (isHead[f]) headFaces++;
+        }
+        if (headFaces == 0 || headFaces == faces) return;
+
+        var rest = RestHeadPivot(shared, joints, headJoints);
+        if (rest == null) return;
+        var pivot = Placed(rest, stand);
+
+        var body = built.Clone();
+        var head = built.Clone();
+        for (int f = 0; f < faces; f++) Fold(isHead[f] ? body : head, f, pivot);
+        mesh = body;
+        SeparateHead = head;
+        HeadPivot = pivot;
+    }
+
+    /// <summary>A face's four corners onto one point: nothing left to draw, every array still the same length.</summary>
+    private static void Fold(MeshData m, int face, Vec3f to)
+    {
+        for (int k = 0; k < 4; k++)
+        {
+            int i = (face * 4 + k) * 3;
+            m.xyz[i] = to.X; m.xyz[i + 1] = to.Y; m.xyz[i + 2] = to.Z;
+        }
+    }
+
+    /// <summary>
+    /// Where the head meets the neck, in the rest frame (the animal faces -X, so the back of the head is its +X side): the
+    /// back of the head's lower part, half way across. The lower part only, so antlers and ears sweeping back and up do not
+    /// pull it away from the neck.
+    /// </summary>
+    private static Vec3f RestHeadPivot(MeshData shared, int[] joints, HashSet<int> headJoints)
+    {
+        float minY = float.MaxValue, maxY = float.MinValue, minZ = float.MaxValue, maxZ = float.MinValue;
+        for (int i = 0; i < shared.VerticesCount; i++)
+        {
+            if (!headJoints.Contains(joints[i])) continue;
+            float y = shared.xyz[i * 3 + 1], z = shared.xyz[i * 3 + 2];
+            minY = Math.Min(minY, y); maxY = Math.Max(maxY, y); minZ = Math.Min(minZ, z); maxZ = Math.Max(maxZ, z);
+        }
+        if (minY > maxY) return null;
+        float lowTop = minY + (maxY - minY) * 0.6f, backX = float.MinValue;
+        for (int i = 0; i < shared.VerticesCount; i++)
+            if (headJoints.Contains(joints[i]) && shared.xyz[i * 3 + 1] <= lowTop) backX = Math.Max(backX, shared.xyz[i * 3]);
+        return backX == float.MinValue ? null : new Vec3f(backX, minY + (lowTop - minY) / 2, (minZ + maxZ) / 2);
+    }
+
+    /// <summary>A rest-frame point moved exactly as Rebuild moves the mesh: tilt, nudge, turn, stand.</summary>
+    private Vec3f Placed(Vec3f p, float stand)
+    {
+        static Vec3f Turn(Vec3f v, float rz, float ry)
+        {
+            var mat = new float[16];
+            Mat4f.RotateXYZ(mat, 0, ry, rz);
+            var o = new float[3];
+            Mat4f.MulWithVec3(mat, new[] { v.X - 0.5f, v.Y, v.Z - 0.5f }, o);
+            return new Vec3f(o[0] + 0.5f, o[1], o[2] + 0.5f);
+        }
+        if (Tilt != 0) p = Turn(p, Tilt, 0);
+        p = new Vec3f(p.X + OffZ, p.Y, p.Z - OffX);
+        p = Turn(p, 0, Rotation);
+        return new Vec3f(p.X, p.Y + stand + OffY, p.Z);
     }
 
     /// <summary>The specimen tree (see <see cref="Specimen"/>). Null only for a broken placement.</summary>
@@ -478,8 +613,16 @@ public sealed class BEMount : BlockEntity, IAutoBoxesOwner
     /// </summary>
     private void Rebuild()
     {
+        RebuildMesh();
+        if (Api?.Side == EnumAppSide.Client) Notify(HeadChanged);
+    }
+
+    private void RebuildMesh()
+    {
         mesh = null;
         Box = null;
+        SeparateHead = null;
+        HeadPivot = null;
         if (Api == null || Data == null) return;
         var system = Api.ModLoader.GetModSystem<TaxidermyModSystem>();
         var def = system.Find(Data);
@@ -537,6 +680,7 @@ public sealed class BEMount : BlockEntity, IAutoBoxesOwner
                 // Auto boxes: the same box without the one-block cap goes to the server, with the moving parts for collision.
                 SendReach(capi, ModelBox(mesh, dx, dy, dz, ReachMax), PartBoxes(shared, mesh, dx, dy, dz));
                 HeadBox = HeadBoxOf(shared, mesh, dx, dy, dz);
+                if (DrawHeadSeparately?.Invoke(this) == true) SplitHead(shared, stand);
             }
         }
         catch (Exception e)
