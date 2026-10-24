@@ -236,15 +236,6 @@ public sealed class BlockAssembly : Block
         return true;
     }
 
-    /// <summary>The threads' names for a message - the first item each one matches ("Flax twine or Red twine"); installed ones only.</summary>
-    private static string ThreadName(IWorldAccessor world, NeedleUse use)
-    {
-        var names = use.Threads
-            .Select(t => world.Items.FirstOrDefault(i => i?.Code != null && WildcardUtil.Match(t, i.Code)))
-            .Where(i => i != null).Select(i => new ItemStack(i).GetName()).Distinct().ToList();
-        return names.Count == 0 ? string.Join(" / ", use.Threads.Select(t => t.ToShortString())) : string.Join(" or ", names);
-    }
-
     /// <summary>A lang entry, or the English text when the lang file does not have it yet.</summary>
     private static string Text(string key, string english, params object[] args) =>
         Lang.HasTranslation(key) ? Lang.Get(key, args) : string.Format(english, args);
@@ -276,7 +267,7 @@ public sealed class BlockAssembly : Block
                 {
                     if (world.Api is ICoreClientAPI noThread)
                         noThread.TriggerIngameError(this, "taxidermy-needthread",
-                            Text("taxidermy:assembly-needthread", "Needs {0} {1} in your hotbar or backpack to sew", ThreadFor(be, use), ThreadName(world, use)));
+                            Text("taxidermy:assembly-needthread", "Needs {0} twine in your hotbar or backpack to sew it", ThreadFor(be, use)));
                     return false;
                 }
                 byPlayer.Entity.StartAnimation(SewAnim);
@@ -372,7 +363,8 @@ public sealed class BlockAssembly : Block
         if (be?.HeadStack == null) return base.GetPlacedBlockInfo(world, pos, forPlayer);
         var sb = new StringBuilder();
         sb.AppendLine(Lang.Get("taxidermy:assembly-grass", be.Grass, be.GrassNeeded));
-        sb.AppendLine(be.ReadyToSew ? Lang.Get("taxidermy:assembly-next-sew", be.Stitches) : Lang.Get("taxidermy:assembly-next-grass"));
+        // the twine a bone needle takes (half the old stitches); the generic message, as any kept needle's twine will do
+        sb.AppendLine(be.ReadyToSew ? Lang.Get("taxidermy:assembly-next-sew", Math.Max(1, be.Stitches / 2)) : Lang.Get("taxidermy:assembly-next-grass"));
         sb.AppendLine(Lang.Get("taxidermy:assembly-break"));
         return sb.ToString();
     }
