@@ -391,10 +391,10 @@ public sealed class BEMount : BlockEntity, IAutoBoxesOwner
     /// <summary>Client: raised once when the mount is broken or its chunk unloads.</summary>
     public static event Action<BEMount> MountGone;
 
-    /// <summary>Client: the head, in the block's frame like the mesh, when it was split off; else null.</summary>
+    /// <summary>Client: the head and its neck, in the block's frame like the mesh, when they were split off; else null.</summary>
     public MeshData SeparateHead { get; private set; }
 
-    /// <summary>Client: where <see cref="SeparateHead"/> turns from (the back of the head, where the neck is), block frame.</summary>
+    /// <summary>Client: where <see cref="SeparateHead"/> turns from (the base of the neck, where it meets the body), block frame.</summary>
     public Vec3f HeadPivot { get; private set; }
 
     /// <summary>Broken or unloaded.</summary>
@@ -425,13 +425,13 @@ public sealed class BEMount : BlockEntity, IAutoBoxesOwner
 
     /// <summary>
     /// Split the head off the built mesh: two copies of it, the head's faces folded to a point in the one the block keeps and
-    /// every other face folded in the other - so neither copy loses any of the data the chunk mesh needs. The head's faces are
-    /// those of its joints (MountMesher.HeadJointsOf, the same as the head-only outline).
+    /// every other face folded in the other - so neither copy loses any of the data the chunk mesh needs. "The head" is the
+    /// head with its neck (MountMesher.TurningJointsOf), cut as a head trophy is, so it turns where the neck meets the body.
     /// </summary>
     private void SplitHead(MeshData shared, float stand)
     {
         var joints = MountMesher.JointsOf(shared);
-        var headJoints = MountMesher.HeadJointsOf(shared);
+        var headJoints = MountMesher.TurningJointsOf(shared);
         var built = mesh;
         if (joints == null || headJoints == null || built == null || joints.Length != built.VerticesCount
             || built.VerticesPerFace != 4 || built.VerticesCount % 4 != 0) return;
@@ -468,9 +468,9 @@ public sealed class BEMount : BlockEntity, IAutoBoxesOwner
     }
 
     /// <summary>
-    /// Where the head meets the neck, in the rest frame (the animal faces -X, so the back of the head is its +X side): the
-    /// back of the head's lower part, half way across. The lower part only, so antlers and ears sweeping back and up do not
-    /// pull it away from the neck.
+    /// Where the turning part meets the body, in the rest frame (the animal faces -X, so its back is the +X side): the back
+    /// of its lower part, half way across - the base of the neck. The lower part only, so antlers and ears sweeping back and
+    /// up do not pull it away from there.
     /// </summary>
     private static Vec3f RestHeadPivot(MeshData shared, int[] joints, HashSet<int> headJoints)
     {

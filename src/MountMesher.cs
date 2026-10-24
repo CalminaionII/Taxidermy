@@ -501,15 +501,23 @@ public static class MountMesher
         }
         // The head's joints (the "head" element found as for head trophies, and everything inside it) - for the
         // head-only mount outline. A head with no joint of its own takes its parent's, so it may bring the neck.
-        HashSet<int> headJoints = null;
+        HashSet<int> headJoints = null, turnJoints = null;
         if (jointed)
         {
-            var head = FindHead(shape.Elements, new List<ShapeElement>(), HeadWords);
+            var chain = new List<ShapeElement>();
+            var head = FindHead(shape.Elements, chain, HeadWords);
             if (head != null)
             {
                 headJoints = new HashSet<int>();
-                void Collect(ShapeElement e) { headJoints.Add(e.JointId); foreach (var c in e.Children ?? []) Collect(c); }
-                Collect(head);
+                void Collect(ShapeElement e, HashSet<int> into) { into.Add(e.JointId); foreach (var c in e.Children ?? []) Collect(c, into); }
+                Collect(head, headJoints);
+                // the head as a head trophy finds it: the definition's own element names first (BuildHead)
+                if (def.HeadElements is { Length: > 0 })
+                {
+                    var trophyChain = new List<ShapeElement>();
+                    if (FindHead(shape.Elements, trophyChain, def.HeadElements) is { } trophyHead) (head, chain) = (trophyHead, trophyChain);
+                }
+                turnJoints = TurningJoints(shape.Elements, head, chain);
             }
         }
 
@@ -549,6 +557,7 @@ public static class MountMesher
         if (mesh.VerticesCount == 0) capi.Logger.Warning("[Taxidermy] Empty mesh for {0} pose {1}", entityCode, pose.Code);
         if (joints != null) PartsOfMesh.AddOrUpdate(mesh, joints);
         if (headJoints != null) HeadOfMesh.AddOrUpdate(mesh, headJoints);
+        if (turnJoints is { Count: > 0 }) TurnOfMesh.AddOrUpdate(mesh, turnJoints);
         return mesh;
     }
 
@@ -556,6 +565,36 @@ public static class MountMesher
 
     /// <summary>The joints that make up the head of a mount mesh from <see cref="Get"/>, or null (no joints / no head found).</summary>
     public static HashSet<int> HeadJointsOf(MeshData shared) => shared != null && HeadOfMesh.TryGetValue(shared, out var h) ? h : null;
+
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<MeshData, HashSet<int>> TurnOfMesh = new();
+
+    /// <summary>The joints of the head AND its neck - the part that can turn on its own (BEMount.SeparateHead) - or null.</summary>
+    public static HashSet<int> TurningJointsOf(MeshData shared) => shared != null && TurnOfMesh.TryGetValue(shared, out var t) ? t : null;
+
+    /// <summary>
+    /// The head with its neck, as a head trophy is cut (BuildHead: the parents named neck or throat come too), so it turns
+    /// where the neck meets the body rather than at the jaw. A joint the rest of the animal also uses is left out - an element
+    /// with no joint of its own takes its parent's, and turning that would turn the body with it.
+    /// </summary>
+    private static HashSet<int> TurningJoints(ShapeElement[] elements, ShapeElement head, List<ShapeElement> chain)
+    {
+        var top = head;
+        for (int i = chain.Count - 1; i >= 0; i--)
+        {
+            var name = chain[i].Name;
+            if (name == null || !NeckWords.Any(w => name.Contains(w, StringComparison.OrdinalIgnoreCase))) break;
+            top = chain[i];
+        }
+        var inside = new HashSet<ShapeElement>();
+        void Mark(ShapeElement e) { inside.Add(e); foreach (var c in e.Children ?? []) Mark(c); }
+        Mark(top);
+        var outside = new HashSet<int>();
+        void Rest(ShapeElement e) { if (!inside.Contains(e)) outside.Add(e.JointId); foreach (var c in e.Children ?? []) Rest(c); }
+        foreach (var e in elements ?? []) Rest(e);
+        var joints = new HashSet<int>(inside.Select(e => e.JointId));
+        joints.ExceptWith(outside);
+        return joints;
+    }
 
     /// <summary>Per built mount mesh: the joint (moving part) of every vertex, in vertex order. A Clone keeps the order.</summary>
     private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<MeshData, int[]> PartsOfMesh = new();
