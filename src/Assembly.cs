@@ -164,19 +164,19 @@ public sealed class BlockAssembly : Block
     // ── Needles that are kept, sewing with thread taken from the player (2026-10-24) ──
     // First for Tailor's Delight (a player asked; Calm: "they have to use [its] twine"), then our own bare bone needle too
     // (Calm: "try it the way that we have done with Tailor's Delight needle"). Any item whose JSON has
-    //     "attributes": { "taxidermyNeedle": { "thread": "tailorsdelight:twine-*", "threadPerStitch": 1 } }
-    // sews here: the needle is kept and the thread is taken from the hotbar or backpack - by the animal's size, one per
-    // stitch the old needle used (2 small, 4 medium, 6 large, 8 huge - BEAssembly.Stitches; Calm: "the same system of how
-    // many it needs ... depending on size"), times threadPerStitch (default 1). No "thread": nothing is taken. Tailor's Delight's gets the attribute from
+    //     "attributes": { "taxidermyNeedle": { "thread": "tailorsdelight:twine-*", "threadMultiplier": 1 } }
+    // sews here: the needle is kept and the thread is taken from the hotbar or backpack - by the animal's size, half the
+    // stitches the old needle used (1 small, 2 medium, 3 large, 4 huge; Calm: "the same system of how many it needs ...
+    // depending on size", then "might need to half it"), times threadMultiplier (default 1). No "thread": nothing is taken. Tailor's Delight's gets the attribute from
     // assets/taxidermy/patches/compat-tailorsdelight.json (dependsOn); our bare needle sews with flax twine without one.
     // The old threaded Needle and Thread still sews on its durability, so the ones already in worlds are used up as before.
 
     public const string NeedleAttribute = "taxidermyNeedle";
 
     /// <summary>A kept needle: the thread it sews with (null = none needed) and how much per mount.</summary>
-    internal sealed record NeedleUse(AssetLocation Thread, int PerStitch);
+    internal sealed record NeedleUse(AssetLocation Thread, int Multiplier);
 
-    /// <summary>Our bare bone needle, when its JSON says nothing else: flax twine, one per stitch.</summary>
+    /// <summary>Our bare bone needle, when its JSON says nothing else: flax twine, by size (ThreadFor).</summary>
     private static readonly NeedleUse BareNeedle = new(new AssetLocation("game:flaxtwine"), 1);
 
     /// <summary>A needle that is kept and sews with separate thread, or null (not a needle, or the threaded one).</summary>
@@ -186,7 +186,7 @@ public sealed class BlockAssembly : Block
         var attribute = collectible.Attributes?[NeedleAttribute];
         if (attribute == null || !attribute.Exists) return collectible is ItemNeedleBare ? BareNeedle : null;
         string thread = attribute["thread"].AsString(null);
-        return new NeedleUse(string.IsNullOrWhiteSpace(thread) ? null : new AssetLocation(thread), Math.Max(1, attribute["threadPerStitch"].AsInt(1)));
+        return new NeedleUse(string.IsNullOrWhiteSpace(thread) ? null : new AssetLocation(thread), Math.Max(1, attribute["threadMultiplier"].AsInt(1)));
     }
 
     /// <summary>The player's hotbar and backpack slots holding this thread.</summary>
@@ -206,8 +206,8 @@ public sealed class BlockAssembly : Block
         use.Thread == null || player?.WorldData?.CurrentGameMode == EnumGameMode.Creative
         || ThreadSlots(player, use.Thread).Sum(s => s.StackSize) >= amount;
 
-    /// <summary>How much thread one mount takes: one per stitch, by the animal's size.</summary>
-    private static int ThreadFor(BEAssembly be, NeedleUse use) => be.Stitches * use.PerStitch;
+    /// <summary>How much thread one mount takes: half its stitches, by the animal's size - 1 small, 2 medium, 3 large, 4 huge.</summary>
+    private static int ThreadFor(BEAssembly be, NeedleUse use) => Math.Max(1, be.Stitches / 2) * use.Multiplier;
 
     /// <summary>Server: takes the thread. False (and nothing taken) when there is not enough.</summary>
     private static bool TakeThread(IPlayer player, NeedleUse use, int amount)
