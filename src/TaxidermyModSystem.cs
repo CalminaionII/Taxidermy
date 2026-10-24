@@ -107,6 +107,9 @@ public sealed class TaxidermyConfig
     /// </summary>
     public int MountOutline { get; set; } = 0;
 
+    /// <summary>CLIENT setting (each player's own view): small seasonal touches. false turns them off.</summary>
+    public bool SeasonalEffects { get; set; } = true;
+
     /// <summary>The pre-1.0.3 single switch: read once into both own-pelt switches, never written back.</summary>
     [Newtonsoft.Json.JsonProperty("CustomPelts", NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
     public bool? OldCustomPelts { get; set; }

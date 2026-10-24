@@ -4,3 +4,6 @@ obj/
 *.dll
 *.pdb
 gamepath.props
+
+# Files kept on this PC only
+src/local/
