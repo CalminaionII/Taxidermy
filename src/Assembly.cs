@@ -145,7 +145,74 @@ public sealed class BlockAssembly : Block
     private static void Stitch(IWorldAccessor world, IPlayer byPlayer, BlockSelection blockSel) =>
         world.PlaySoundAt(StitchSound, blockSel.Position.X + 0.5, blockSel.Position.Y + 0.3, blockSel.Position.Z + 0.5, byPlayer, true, 16, 0.7f);
 
-    private static bool IsNeedle(ItemSlot slot) => slot?.Itemstack?.Collectible is ItemNeedleThread;
+    private static bool IsNeedle(ItemSlot slot) => slot?.Itemstack?.Collectible is ItemNeedleThread || OtherNeedle(slot?.Itemstack?.Collectible) != null;
+
+    // ── Other mods' needles (Tailor's Delight, 2026-10-24: a player asked; Calm: "they have to use [its] twine") ──
+    // Any item whose JSON has
+    //     "attributes": { "taxidermyNeedle": { "thread": "tailorsdelight:twine-*", "threadPerSewing": 1 } }
+    // sews here too. Our own Needle and Thread carries its thread as durability; one of these is kept and the thread is
+    // taken from the player's hotbar or backpack instead, threadPerSewing of it per mount whatever its size. No "thread":
+    // nothing is taken. The attribute is patched on by assets/taxidermy/patches/compat-tailorsdelight.json (dependsOn).
+
+    public const string NeedleAttribute = "taxidermyNeedle";
+
+    /// <summary>Another mod's needle: the thread it sews with (null = none needed) and how much per mount. Null if not one.</summary>
+    private sealed record NeedleUse(AssetLocation Thread, int PerSewing);
+
+    private static NeedleUse OtherNeedle(CollectibleObject collectible)
+    {
+        if (collectible == null || collectible is ItemNeedleThread) return null;
+        var attribute = collectible.Attributes?[NeedleAttribute];
+        if (attribute == null || !attribute.Exists) return null;
+        string thread = attribute["thread"].AsString(null);
+        return new NeedleUse(string.IsNullOrWhiteSpace(thread) ? null : new AssetLocation(thread), Math.Max(1, attribute["threadPerSewing"].AsInt(1)));
+    }
+
+    /// <summary>The player's hotbar and backpack slots holding this thread.</summary>
+    private static IEnumerable<ItemSlot> ThreadSlots(IPlayer player, AssetLocation thread)
+    {
+        foreach (string name in new[] { GlobalConstants.hotBarInvClassName, GlobalConstants.backpackInvClassName })
+        {
+            var inventory = player?.InventoryManager?.GetOwnInventory(name);
+            if (inventory == null) continue;
+            foreach (var slot in inventory)
+                if (slot?.Itemstack?.Collectible?.Code is { } code && WildcardUtil.Match(thread, code)) yield return slot;
+        }
+    }
+
+    /// <summary>Whether the player can sew with this needle: its thread, enough of it. Creative needs none.</summary>
+    private static bool HasThread(IPlayer player, NeedleUse use) =>
+        use.Thread == null || player?.WorldData?.CurrentGameMode == EnumGameMode.Creative
+        || ThreadSlots(player, use.Thread).Sum(s => s.StackSize) >= use.PerSewing;
+
+    /// <summary>Server: takes the thread. False (and nothing taken) when there is not enough.</summary>
+    private static bool TakeThread(IPlayer player, NeedleUse use)
+    {
+        if (use.Thread == null || player?.WorldData?.CurrentGameMode == EnumGameMode.Creative) return true;
+        var slots = ThreadSlots(player, use.Thread).ToList();
+        if (slots.Sum(s => s.StackSize) < use.PerSewing) return false;
+        int left = use.PerSewing;
+        foreach (var slot in slots)
+        {
+            if (left <= 0) break;
+            int take = Math.Min(left, slot.StackSize);
+            slot.TakeOut(take);
+            slot.MarkDirty();
+            left -= take;
+        }
+        return true;
+    }
+
+    /// <summary>The thread's name for a message: the first item it matches ("Red twine"), else its code.</summary>
+    private static string ThreadName(IWorldAccessor world, AssetLocation thread)
+    {
+        var item = world.Items.FirstOrDefault(i => i?.Code != null && WildcardUtil.Match(thread, i.Code));
+        return item == null ? thread.ToShortString() : new ItemStack(item).GetName();
+    }
+
+    /// <summary>A lang entry, or the English text when the lang file does not have it yet.</summary>
+    private static string Text(string key, string english, params object[] args) =>
+        Lang.HasTranslation(key) ? Lang.Get(key, args) : string.Format(english, args);
     private static bool IsGrass(ItemSlot slot) => slot?.Itemstack?.Collectible?.Code?.ToString() == "game:drygrass";
 
     public override bool OnBlockInteractStart(IWorldAccessor world, IPlayer byPlayer, BlockSelection blockSel)
@@ -170,6 +237,13 @@ public sealed class BlockAssembly : Block
         {
             if (be.ReadyToSew)
             {
+                if (OtherNeedle(slot.Itemstack.Collectible) is { } use && !HasThread(byPlayer, use))
+                {
+                    if (world.Api is ICoreClientAPI noThread)
+                        noThread.TriggerIngameError(this, "taxidermy-needthread",
+                            Text("taxidermy:assembly-needthread", "Needs {0} {1} in your hotbar or backpack to sew", use.PerSewing, ThreadName(world, use.Thread)));
+                    return false;
+                }
                 byPlayer.Entity.StartAnimation(SewAnim);
                 lock (stitches) stitches[byPlayer.PlayerUID] = 0;
                 Stitch(world, byPlayer, blockSel);
@@ -230,8 +304,16 @@ public sealed class BlockAssembly : Block
         var be = world.BlockAccessor.GetBlockEntity<BEAssembly>(blockSel.Position);
         var slot = byPlayer.InventoryManager.ActiveHotbarSlot;
         if (be == null || !be.ReadyToSew || !IsNeedle(slot)) return;
-        slot.Itemstack.Collectible.DamageItem(world, byPlayer.Entity, slot, be.Stitches);
-        slot.MarkDirty();
+        if (OtherNeedle(slot.Itemstack.Collectible) is { } use)
+        {
+            // another mod's needle is kept; its thread is used up (checked again here - the hotbar may have changed)
+            if (!TakeThread(byPlayer, use)) return;
+        }
+        else
+        {
+            slot.Itemstack.Collectible.DamageItem(world, byPlayer.Entity, slot, be.Stitches);
+            slot.MarkDirty();
+        }
         be.Finish();
     }
 
@@ -270,7 +352,7 @@ public sealed class BlockAssembly : Block
             return grass == null ? [] : [new WorldInteraction { ActionLangCode = "taxidermy:blockhelp-addgrass", MouseButton = EnumMouseButton.Right, Itemstacks = [new ItemStack(grass)] }];
         }
         // Asked every frame while the pile is looked at: the needles are listed once, not searched for each time.
-        var needles = ObjectCacheUtil.GetOrCreate(world.Api, "taxidermy-needles", () => world.Items.Where(i => i is ItemNeedleThread).Select(i => new ItemStack(i)).ToArray());
+        var needles = ObjectCacheUtil.GetOrCreate(world.Api, "taxidermy-needles", () => world.Items.Where(i => i is ItemNeedleThread || OtherNeedle(i) != null).Select(i => new ItemStack(i)).ToArray());
         return [new WorldInteraction { ActionLangCode = "taxidermy:blockhelp-sew", MouseButton = EnumMouseButton.Right, Itemstacks = needles }];
     }
 }
