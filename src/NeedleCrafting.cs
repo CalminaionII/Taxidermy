@@ -133,55 +133,13 @@ public sealed class BehaviorBoneCarve : CollectibleBehavior, IContainedInteracta
     }
 }
 
-/// <summary>The bare bone needle on the ground: hold right-click on it with flax twine and it is threaded.</summary>
-public sealed class ItemNeedleBare : Item, IContainedInteractable
+/// <summary>
+/// The bare bone needle - THE sewing needle since 2026-10-24 (Calm: "the needle is a normal tool and it uses up the
+/// thread"): kept, and sewing a mount takes one flax twine from the player (BlockAssembly.KeptNeedle, in the grid the
+/// mount recipes with it and a flax twine). It used to be threaded on the ground with flax twine into the Needle and
+/// Thread; that is gone - a threaded needle's 60 stitches from one twine would undercut it. Needles already threaded
+/// still sew on their thread and come back bare when it runs out.
+/// </summary>
+public sealed class ItemNeedleBare : Item
 {
-    public const float Seconds = 1.5f;
-    private const string Twine = "game:flaxtwine";
-    public const string ThreadedCode = "taxidermy:needle-threaded";
-
-    private static bool HoldingTwine(IPlayer byPlayer) =>
-        byPlayer?.InventoryManager.ActiveHotbarSlot?.Itemstack?.Collectible?.Code?.ToString() == Twine;
-
-    public bool OnContainedInteractStart(BlockEntityContainer be, ItemSlot slot, IPlayer byPlayer, BlockSelection blockSel)
-    {
-        if (!HoldingTwine(byPlayer)) return false;
-        if (be.Api.Side == EnumAppSide.Client)
-            be.Api.World.PlaySoundAt(new AssetLocation("game:sounds/player/clothrepair"), blockSel.Position.X + 0.5, blockSel.Position.Y + 0.1, blockSel.Position.Z + 0.5, byPlayer, true, 8, 0.6f);
-        return true;
-    }
-
-    public bool OnContainedInteractStep(float secondsUsed, BlockEntityContainer be, ItemSlot slot, IPlayer byPlayer, BlockSelection blockSel) =>
-        HoldingTwine(byPlayer) && secondsUsed < Seconds;
-
-    public void OnContainedInteractStop(float secondsUsed, BlockEntityContainer be, ItemSlot slot, IPlayer byPlayer, BlockSelection blockSel)
-    {
-        var world = be.Api.World;
-        if (!HoldingTwine(byPlayer) || world.Side != EnumAppSide.Server || secondsUsed < Seconds - 0.05f || slot.Itemstack == null) return;
-        var threaded = world.GetItem(new AssetLocation(ThreadedCode));
-        if (threaded == null) return;
-        var twine = byPlayer.InventoryManager.ActiveHotbarSlot;
-        twine.TakeOut(1);
-        twine.MarkDirty();
-        var pos = be.Pos.Copy();
-        if (slot.Itemstack.StackSize > 1)
-        {
-            // A pile of needles: one is threaded and handed over, the rest stay down.
-            slot.TakeOut(1);
-            GroundCraft.Changed(be, slot);
-            GroundCraft.Give(byPlayer, new ItemStack(threaded), pos);
-            return;
-        }
-        // The one needle is picked up threaded - the spot is left clear.
-        slot.Itemstack = null;
-        GroundCraft.Changed(be, slot);
-        GroundCraft.Give(byPlayer, new ItemStack(threaded), pos);
-    }
-
-    public WorldInteraction[] GetContainedInteractionHelp(BlockEntityContainer be, ItemSlot slot, IPlayer forPlayer, BlockSelection blockSel)
-    {
-        var twine = be.Api.World.GetItem(new AssetLocation(Twine));
-        return [new WorldInteraction { ActionLangCode = "taxidermy:blockhelp-threadneedle", MouseButton = EnumMouseButton.Right,
-            Itemstacks = twine == null ? null : [new ItemStack(twine)] }];
-    }
 }
