@@ -6,12 +6,10 @@ using Vintagestory.GameContent;
 namespace Taxidermy;
 
 /// <summary>
-/// Attached in code to every entity type a definition matches (see the mod system). It makes the
-/// HEAD; the harvest step that adds it, and sets the hides, is BarrelPatch.SwapHide - a postfix on
-/// vanilla's GenerateDrops that runs once per carcass at the knife harvest. The head used to come
-/// through IHarvestableDrops inside GenerateDrops, but vanilla builds a carcass's drops only once,
-/// and a falx hit (the rip harvest) could build them first with the head held back - the knife
-/// then gave the hide and no head (Calm, 2026-09-26, drifters).
+/// Attached in code to every entity type a definition matches. It makes the head; the harvest step that adds it and
+/// sets the hides is BarrelPatch.SwapHide, a postfix on vanilla's GenerateDrops that runs once per carcass at the knife
+/// harvest. It does not go through IHarvestableDrops because vanilla builds a carcass's drops only once, and a rip
+/// harvest could build them first with the head held back.
 /// </summary>
 public sealed class EntityBehaviorTaxidermy : EntityBehavior
 {
@@ -20,10 +18,9 @@ public sealed class EntityBehaviorTaxidermy : EntityBehavior
     public override string PropertyName() => TaxidermyModSystem.BehaviorCode;
 
     /// <summary>
-    /// Set while vanilla's rip harvest runs (BarrelPatch): drifters, shivers and bowtorns hit
-    /// with a ripHarvest blade have a chance to run the whole harvest and throw its first item on
-    /// the ground - which could be our head or hide. Calm, 2026-09-26: no head or hide from a rip
-    /// harvest; they come from the knife harvest only.
+    /// Set while vanilla's rip harvest runs (BarrelPatch): drifters, shivers and bowtorns hit with a ripHarvest blade
+    /// have a chance to run the whole harvest and throw its first item on the ground. Heads and hides come from the
+    /// knife harvest only.
     /// </summary>
     [System.ThreadStatic] internal static bool RipHarvesting;
 

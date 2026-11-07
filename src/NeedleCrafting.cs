@@ -8,10 +8,7 @@ using Vintagestory.GameContent;
 
 namespace Taxidermy;
 
-/// <summary>
-/// Making the needle in the world as well as in the grid, as GROUND crafting (Calm, 2026-10-01:
-/// the left hand will not take a bone or twine - "do ground crafting for it then").
-/// </summary>
+/// <summary>Helpers for making the needle in the world as ground crafting.</summary>
 internal static class GroundCraft
 {
     public static void Give(IPlayer byPlayer, ItemStack stack, BlockPos pos)
@@ -30,19 +27,18 @@ internal static class GroundCraft
 }
 
 /// <summary>
-/// On the game's bone (patched in FIRST, patches/bone-needle.json): a bone on the ground, hold
-/// right-click with a knife -> a bone needle (Calm, 2026-10-01: a plain right-click with a knife does
-/// nothing on a bone pile, so it is free). SNEAK + knife goes to the game's own ground crafting, which
-/// carves the flute exactly as before -
-/// ground storage asks only one handler, so this one passes the click on. Which of the two a hold is
-/// gets decided when it starts and kept to the end, so letting go of sprint half way cannot hand a
-/// half-carved needle to the flute.
+/// On the game's bone (patched in first, patches/bone-needle.json): a bone on the ground, hold right-click with a
+/// knife, gives a bone needle. Sneak + knife goes to the game's own ground crafting, which carves the flute; ground
+/// storage asks only one handler, so this one passes the click on. Which of the two a hold is gets decided when it
+/// starts and kept to the end, so a half-carved needle cannot turn into a flute.
 /// </summary>
 public sealed class BehaviorBoneCarve : CollectibleBehavior, IContainedInteractable
 {
     public const float Seconds = 2.5f;
     private const string Anim = "knifecut";
-    /// <summary>The flute's own carving sound (game:bone's processingSound), played the way the game plays it.</summary>
+    /// <summary>
+    /// The flute's own carving sound (game:bone's processingSound), played the way the game plays it.
+    /// </summary>
     private static readonly AssetLocation Sound = new("game:sounds/tool/groundcrafting/boneflute*");
 
     /// <summary>Players whose current hold is carving a needle (not the flute).</summary>
@@ -54,7 +50,10 @@ public sealed class BehaviorBoneCarve : CollectibleBehavior, IContainedInteracta
     private IContainedInteractable Vanilla =>
         collObj.CollectibleBehaviors.FirstOrDefault(b => b != this && b is IContainedInteractable) as IContainedInteractable;
 
-    /// <summary>A knife selected and NOT sneaking (sneak + knife is the game's flute) - the game's own sneak control, whatever key.</summary>
+    /// <summary>
+    /// A knife selected and NOT sneaking (sneak + knife is the game's flute) - the game's own sneak control, whatever
+    /// key.
+    /// </summary>
     private static bool Wants(IPlayer byPlayer) =>
         byPlayer?.Entity?.Controls.Sneak == false && byPlayer.InventoryManager.ActiveTool == EnumTool.Knife;
 
@@ -64,8 +63,8 @@ public sealed class BehaviorBoneCarve : CollectibleBehavior, IContainedInteracta
     {
         if (!Wants(byPlayer))
         {
-            // A needle carve whose Stop never came (the pile taken away mid-cut, the player gone)
-            // would otherwise still be marked, and this flute carve would finish as a needle.
+            // A needle carve whose Stop never came (the pile taken away mid-cut, the player gone) would otherwise still
+            // be marked, and this flute carve would finish as a needle.
             lock (carving) carving.Remove(byPlayer?.PlayerUID ?? "");
             return Vanilla?.OnContainedInteractStart(be, slot, byPlayer, blockSel) ?? false;
         }
@@ -74,10 +73,8 @@ public sealed class BehaviorBoneCarve : CollectibleBehavior, IContainedInteracta
         be.Api.World.PlaySoundAt(Sound, blockSel.Position, 0, byPlayer);
         if (be.Api is ICoreClientAPI capi)
         {
-            // The game's Stop arrives through the ground storage block - and when the last bone is
-            // used the block is gone, so it never comes and the knife kept cutting (Calm, 2026-10-01;
-            // the head skinning had the same). Stop it here too: once the bone pile is gone or the
-            // time is well past.
+            // The game's Stop arrives through the ground storage block, and when the last bone is used the block is
+            // gone, so it never comes. Stopped here too: once the bone pile is gone or the time is well past.
             var pos = blockSel.Position.Copy();
             long since = capi.World.ElapsedMilliseconds, id = 0;
             id = capi.Event.RegisterGameTickListener(_ =>
@@ -134,11 +131,9 @@ public sealed class BehaviorBoneCarve : CollectibleBehavior, IContainedInteracta
 }
 
 /// <summary>
-/// The bare bone needle - THE sewing needle since 2026-10-24 (Calm: "the needle is a normal tool and it uses up the
-/// thread"): kept, and sewing a mount takes one flax twine from the player (BlockAssembly.KeptNeedle, in the grid the
-/// mount recipes with it and a flax twine). It used to be threaded on the ground with flax twine into the Needle and
-/// Thread; that is gone - a threaded needle's 60 stitches from one twine would undercut it. Needles already threaded
-/// still sew on their thread and come back bare when it runs out.
+/// The bare bone needle, the mod's sewing needle: kept, and sewing a mount takes thread from the player
+/// (BlockAssembly.KeptNeedle; in the grid, the mount recipes with it and a flax twine). Needles already threaded still
+/// sew on their thread and come back bare when it runs out.
 /// </summary>
 public sealed class ItemNeedleBare : Item
 {

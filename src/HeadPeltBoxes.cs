@@ -11,7 +11,9 @@ using Vintagestory.GameContent;
 
 namespace Taxidermy;
 
-/// <summary>Client to server: the box a head or pelt in a ground storage / antler mount is drawn in (that block's frame).</summary>
+/// <summary>
+/// Client to server: the box a head or pelt in a ground storage / antler mount is drawn in (that block's frame).
+/// </summary>
 [ProtoContract(ImplicitFields = ImplicitFields.AllPublic)]
 public class DisplayBoxPacket
 {
@@ -20,35 +22,25 @@ public class DisplayBoxPacket
 }
 
 /// <summary>
-/// AUTO BOXES TEST (2026-10-05, Calm: "do the heads next and then the pelts"): a head or pelt in the
-/// game's ground storage or on its antler mount gets a box round what is actually drawn, clickable
-/// everywhere it reaches - like the mounts.
-///
-/// Those are VANILLA blocks, so this is the glue the mount did not need:
-/// * MEASURED from exactly what the block draws - the item's cached mesh times the block's own
-///   transform for that slot (BlockEntityDisplay.OnTesselation adds getMesh(slot) with
-///   tfMatrices[index]; public vssurvivalmod BEContainerDisplay.cs), so it follows ground storage's
-///   turn, the antler mount's wall and the head's Adjust numbers with no maths of our own. Client
-///   only - the server has no meshes. Up to 6 blocks each way (Calm, 2026-10-06); never thinner than 1/16.
-/// * The client sends it (DisplayBoxPacket); the server checks build permission and that the block
-///   still holds a Taxidermy head or pelt, then places fillers that CARRY the box
-///   (AutoBoxes.SyncCarried) in the empty spaces it reaches.
-/// * The block's own outline: a Harmony postfix on GetSelectionBoxes gives the whole box (the
-///   antler mount keeps its plaque too). Fillers check every 2 s that the head/pelt is still there.
+/// A head or pelt in the game's ground storage or on its antler mount gets a box round what is drawn, clickable
+/// everywhere it reaches, like the mounts. Those are vanilla blocks, so:
+/// * Measured from what the block draws: the item's cached mesh times the block's own transform for that slot (BlockEntityDisplay.OnTesselation adds getMesh(slot) with tfMatrices[index]), so it follows ground storage's turn, the antler mount's wall and the head's Adjust numbers. Client only, since the server has no meshes. Up to 6 blocks each way, never thinner than 1/16.
+/// * The client sends it (DisplayBoxPacket). The server checks build permission and that the block still holds a Taxidermy head or pelt, then places fillers that carry the box (AutoBoxes.SyncCarried) in the empty spaces it reaches.
+/// * The block's own outline: a Harmony postfix on GetSelectionBoxes gives the whole box (the antler mount keeps its plaque too). Fillers check every 2 s that the head or pelt is still there.
 /// </summary>
 public static class HeadPeltBoxes
 {
     private const float Max = 6f, Min = 1f / 16f;
-    /// <summary>The whole box is solid (Calm, 2026-10-06: "try collision for now for the whole thing").</summary>
-    private const bool Solid = true;
-
-    /// <summary>Both sides: the owner block's own solid piece, by position (from the measurement, the packet, or a loaded filler).</summary>
+    /// <summary>
+    /// Both sides: the owner block's own solid piece, by position (from the measurement, the packet, or a loaded
+    /// filler).
+    /// </summary>
     private static readonly ConcurrentDictionary<BlockPos, Cuboidf[]> OwnPiece = new();
 
     private static void Remember(BlockPos pos, Cuboidf box)
     {
-        if (Solid) OwnPiece[pos.Copy()] = AutoBoxes.PieceAt(box, (0, 0, 0));
-    }   // same cap as the mounts (Calm, 2026-10-06)
+        OwnPiece[pos.Copy()] = AutoBoxes.PieceAt(box, (0, 0, 0));
+    }   // same cap as the mounts
 
     private static readonly MethodInfo GetMeshMethod = AccessTools.Method(typeof(BlockEntityDisplay), "getMesh");
     private static readonly FieldInfo TfField = AccessTools.Field(typeof(BlockEntityDisplay), "tfMatrices");
@@ -72,7 +64,7 @@ public static class HeadPeltBoxes
     }
 
     /// <summary>Both sides, from mod Start: what keeps a carried filler alive, and the message type.</summary>
-    public static void Start(ICoreAPI api)
+    public static void Start()
     {
         AutoBoxes.OwnerStillValid = (ba, pos) => HeldSlot(ba.GetBlockEntity(pos)) >= 0;
         AutoBoxes.CarriedSeen = (owner, box, solid) => { if (solid) Remember(owner, box); };
@@ -89,9 +81,10 @@ public static class HeadPeltBoxes
             if (done.Add(method)) harmony.Patch(method, postfix: postfix);
         }
         // Only the aimed box is outlined on an antler mount holding one of our heads (head box + plaque box).
-        // BlockAntlerMount does not override DoPartialSelection - Harmony can only patch the method where it is DECLARED
-        // (Block's; the postfix checks for the antler mount). A failed patch must never stop the mod starting: on
-        // 2026-10-06 it did, the server never registered the network channel and the client crashed sending a box.
+        // BlockAntlerMount does not override DoPartialSelection and Harmony can only patch a method where it is
+        // declared, so Block's is patched and the postfix checks for the antler mount. A failed patch must never stop
+        // the mod starting: the server would not register the network channel, and the client would crash sending a
+        // box.
         try
         {
             var partial = AccessTools.Method(typeof(BlockAntlerMount), nameof(Block.DoPartialSelection), [typeof(IWorldAccessor), typeof(BlockPos)]);
@@ -126,7 +119,9 @@ public static class HeadPeltBoxes
         api.Event.RegisterGameTickListener(_ => ProcessPending(), 500);
     }
 
-    /// <summary>From GenMesh (tesselation thread): our real mesh was just handed to this block - measure it soon.</summary>
+    /// <summary>
+    /// From GenMesh (tesselation thread): our real mesh was just handed to this block - measure it soon.
+    /// </summary>
     public static void Notice(BlockPos pos)
     {
         if (pos != null && capi != null) Pending[pos.Copy()] = 0;
@@ -179,7 +174,7 @@ public static class HeadPeltBoxes
         return new Measured(new Cuboidf(x1, y1, z1, x2, y2, z2), mesh, t, slot.Itemstack);
     }
 
-    /// <summary>Centred, between 1/16 and 3 blocks.</summary>
+    /// <summary>Centred, between 1/16 and 6 blocks.</summary>
     private static (float, float) Fit(float lo, float hi)
     {
         float c = (lo + hi) / 2, half = Math.Clamp((hi - lo) / 2, Min / 2, Max / 2);
@@ -187,13 +182,12 @@ public static class HeadPeltBoxes
     }
 
     /// <summary>
-    /// Every NEW measurement goes to the server - no "same box as last time" skip (2026-10-06). The skip was what made a
-    /// head forget its box: take a head off (the server drops its fillers) and put one back in the same spot, and the
-    /// new head measured the same as the old one, so nothing was sent and it never got its fillers again. A measurement
-    /// is only made when the head, its mesh or its transform changed, so this is not sent every frame.
+    /// Every new measurement goes to the server, with no "same box as last time" skip: a head taken off loses its
+    /// fillers, and one put back in the same spot would measure the same and never get them again. A measurement is
+    /// only made when the head, its mesh or its transform changed, so this is not sent every frame.
     /// </summary>
-    /// <returns>false when the channel is not there or not connected yet (GetChannel returns null while a world loads -
-    /// a crash on 2026-10-06 once the skip above was gone); the caller tries again later.</returns>
+    /// <returns>False when the channel is not there or not connected yet (GetChannel returns null while a world loads);
+    /// the caller tries again later.</returns>
     private static bool Send(BlockPos pos, Cuboidf box)
     {
         var channel = capi?.Network?.GetChannel(TaxidermyModSystem.Channel);
@@ -207,9 +201,9 @@ public static class HeadPeltBoxes
     }
 
     /// <summary>
-    /// The block's own outline: the whole measured box (the antler mount keeps its plaque in it).
-    /// Client main thread only; re-measures when the mesh or the block's transform has changed
-    /// (a turn, a different pelt, the Adjust window).
+    /// The block's own outline: the whole measured box (the antler mount keeps its plaque in it). Client main thread
+    /// only; re-measures when the mesh or the block's transform has changed (a turn, a different pelt, the Adjust
+    /// window).
     /// </summary>
     public static void SelectionPostfix(Block __instance, IBlockAccessor __0, BlockPos __1, ref Cuboidf[] __result)
     {
@@ -221,8 +215,8 @@ public static class HeadPeltBoxes
         if (i < 0) { MeasuredAt.Remove(pos); return; }   // picked up: forget it, so whatever goes here next is measured afresh
         if (!MeasuredAt.TryGetValue(pos, out var m))
         {
-            // measure on first look - a head whose mesh was already built (another of the same animal, or one put
-            // back) never comes through GenMesh, so nothing else would start it
+            // measure on first look - a head whose mesh was already built (another of the same animal, or one put back)
+            // never comes through GenMesh, so nothing else would start it
             Notice(pos);
             return;
         }
@@ -237,13 +231,15 @@ public static class HeadPeltBoxes
             MeasuredAt[pos] = m = again;
             Remember(pos, again.Box);
         }
-        // The antler mount: the head's own box FIRST, then the plaque's own (vanilla's) - two outlines, only the one aimed
-        // at drawn (PartialPostfix). One box round both made a small head's outline as wide as the plaque (Calm, 2026-10-06).
+        // The antler mount: the head's own box first, then the plaque's, two outlines with only the aimed one drawn
+        // (PartialPostfix). One box round both would make a small head's outline as wide as the plaque.
         if (__instance is BlockAntlerMount && __result is { Length: > 0 }) __result = [m.Box, .. __result];
         else __result = [m.Box];
     }
 
-    /// <summary>An antler mount holding one of our heads outlines only the box aimed at (the head, or the plaque).</summary>
+    /// <summary>
+    /// An antler mount holding one of our heads outlines only the box aimed at (the head, or the plaque).
+    /// </summary>
     public static void PartialPostfix(Block __instance, IWorldAccessor __0, BlockPos __1, ref bool __result)
     {
         if (__result || __instance is not BlockAntlerMount || __0 == null || __1 == null) return;
@@ -251,19 +247,19 @@ public static class HeadPeltBoxes
     }
 
     /// <summary>
-    /// What is solid in the owner's own space: its piece of the box (any thread - physics asks). The
-    /// antler mount keeps its plaque as well; ground storage's own plate is replaced.
+    /// What is solid in the owner's own space: its piece of the box (any thread - physics asks). The antler mount keeps
+    /// its plaque as well; ground storage's own plate is replaced.
     /// </summary>
     public static void CollisionPostfix(Block __instance, IBlockAccessor __0, BlockPos __1, ref Cuboidf[] __result)
     {
-        if (!Solid || !IsHolder(__instance) || !OwnPiece.TryGetValue(__1, out var own) || own.Length == 0) return;
+        if (!IsHolder(__instance) || !OwnPiece.TryGetValue(__1, out var own) || own.Length == 0) return;
         if (HeldSlot(__0.GetBlockEntity(__1)) < 0) return;
         __result = __instance is BlockAntlerMount && __result is { Length: > 0 } ? [.. __result, .. own] : own;
     }
 
     /// <summary>
-    /// Leaving a world (either side): these are static, so without this a head in the NEXT world at the
-    /// same coordinates would be solid in this world's box until it was measured again.
+    /// Leaving a world (either side): these are static, so without this a head in the NEXT world at the same
+    /// coordinates would be solid in this world's box until it was measured again.
     /// </summary>
     public static void Dispose(EnumAppSide side)
     {
@@ -293,6 +289,6 @@ public static class HeadPeltBoxes
         var (z1, z2) = Fit(Math.Min(p.Z1, p.Z2), Math.Max(p.Z1, p.Z2));
         var box = new Cuboidf(x1, y1, z1, x2, y2, z2);
         Remember(pos, box);
-        AutoBoxes.SyncCarried(sapi.World, pos, box, Solid, byPlayer: player);
+        AutoBoxes.SyncCarried(sapi.World, pos, box, true, byPlayer: player);
     }
 }

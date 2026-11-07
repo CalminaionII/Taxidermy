@@ -10,18 +10,15 @@ using Vintagestory.GameContent;
 namespace Taxidermy;
 
 /// <summary>
-/// The placed mount. It has no shape of its own - it stands on whatever is under it - and the
-/// block entity renders the animal. Everything about it is set in the Adjust window (sneak +
-/// right-click, empty hand); plain right-click picks it up. The wrench modes it had at first
-/// were removed on 2026-09-22 as redundant once the window existed.
+/// The placed mount. It has no shape of its own: it stands on whatever is under it and the block entity renders the
+/// animal. Everything about it is set in the Adjust window (sneak + right-click, empty hand); plain right-click picks
+/// it up.
 /// </summary>
 public sealed class BlockMount : Block
 {
     /// <summary>
-    /// Empty hand: sneak + right-click opens the Adjust window (Calm, 2026-09-21: a menu rather
-    /// than wrench interactions - pose and position in one place, per mount), plain right-click
-    /// picks the mount up. Anything held falls through to the item, which is how the wrench
-    /// keeps working, since block interaction is tried before the held item's use.
+    /// Empty hand: sneak + right-click opens the Adjust window, plain right-click picks the mount up. Anything held
+    /// falls through to the item, since block interaction is tried before the held item's use.
     /// </summary>
     public override bool OnBlockInteractStart(IWorldAccessor world, IPlayer byPlayer, BlockSelection blockSel)
     {
@@ -29,7 +26,7 @@ public sealed class BlockMount : Block
         if (slot == null || !slot.Empty) return base.OnBlockInteractStart(world, byPlayer, blockSel);
         if (byPlayer.WorldData.EntityControls.ShiftKey)
         {
-            // The server decides and tells the client to open the window (claims, 2026-09-23).
+            // The server decides and tells the client to open the window.
             if (world.Side == EnumAppSide.Server)
                 world.Api.ModLoader.GetModSystem<TaxidermyModSystem>().RequestAdjust(byPlayer, blockSel.Position, false);
             return true;
@@ -41,8 +38,8 @@ public sealed class BlockMount : Block
         }
         if (world.Side == EnumAppSide.Server)
         {
-            // An orphaned mount is destroyed, not picked up (Calm, 2026-09-22): its animal's mod
-            // is gone, so the item would be a permanent dud in the inventory. See Orphaned().
+            // An orphaned mount is destroyed, not picked up: its animal's mod is gone, so the item would be a permanent
+            // dud. See Orphaned().
             var stack = Orphaned(world, blockSel.Position) ? null : StackAt(world, blockSel.Position);
             world.BlockAccessor.SetBlock(0, blockSel.Position);
             if (stack != null && !byPlayer.InventoryManager.TryGiveItemstack(stack)) world.SpawnItemEntity(stack, blockSel.Position.ToVec3d().Add(0.5, 0.5, 0.5));
@@ -65,7 +62,7 @@ public sealed class BlockMount : Block
         return box != null ? [box] : base.GetSelectionBoxes(blockAccessor, pos);
     }
 
-    // Solid only once a Reach has arrived (auto boxes test, Calm 2026-10-06: "try collision for the whole thing").
+    // Solid only once a Reach has arrived.
     public override Cuboidf[] GetCollisionBoxes(IBlockAccessor blockAccessor, BlockPos pos) =>
         blockAccessor.GetBlockEntity<BEMount>(pos)?.AutoCollisionAt(pos) ?? [];
 
@@ -76,19 +73,18 @@ public sealed class BlockMount : Block
         Orphaned(world, pos) ? null : StackAt(world, pos);
 
     /// <summary>
-    /// True when the animal this mount was made from no longer exists - its mod is not
-    /// installed - so there is nothing to build a model from and the block is showing the
-    /// placeholder cube. Such a mount breaks into nothing: the item could never render or be
-    /// placed as itself again, and leaving it in an inventory would only puzzle its owner.
-    /// The block is otherwise untouched, so putting the animal's mod back restores it whole.
+    /// True when the animal this mount was made from no longer exists - its mod is not installed - so there is nothing
+    /// to build a model from and the block is showing the placeholder cube. Such a mount breaks into nothing: the item
+    /// could never render or be placed as itself again, and leaving it in an inventory would only puzzle its owner. The
+    /// block is otherwise untouched, so putting the animal's mod back restores it whole.
     /// </summary>
     private static bool Orphaned(IWorldAccessor world, BlockPos pos)
     {
         var data = world.BlockAccessor.GetBlockEntity<BEMount>(pos)?.Data;
         if (data == null) return true;
         if (world.GetEntityType(new AssetLocation(data.GetString("entityCode"))) == null) return true;
-        // The animal is there but nothing says how to mount it any more - its definition file
-        // was removed. Same outcome: no model, so nothing worth keeping.
+        // The animal is there but nothing says how to mount it any more - its definition file was removed. Same
+        // outcome: no model, so nothing worth keeping.
         return world.Api.ModLoader.GetModSystem<TaxidermyModSystem>()?.Find(data) == null;
     }
 
@@ -99,8 +95,7 @@ public sealed class BlockMount : Block
         return stack;
     }
 
-    // OnPickBlock returns the specimen item, so without this the placed block would announce
-    // itself under the item's name (shared reference sect.12b).
+    // OnPickBlock returns the specimen item, so without this the placed block would show the item's name.
     public override string GetPlacedBlockName(IWorldAccessor world, BlockPos pos)
     {
         var data = world.BlockAccessor.GetBlockEntity<BEMount>(pos)?.Data;
@@ -114,7 +109,7 @@ public sealed class BlockMount : Block
         var sb = new StringBuilder();
         if (ItemTaxidermyHide.SexLine(world, be.Data) is { } sex) sb.AppendLine(sex);
         sb.AppendLine(Lang.Get("taxidermy:pose-label", Lang.Get("taxidermy:pose-" + be.Data.GetString("pose"))));
-        // Controls: the interaction help overlay and the handbook page (Calm, 2026-09-29).
+        // Controls are in the interaction help overlay and the handbook page.
         sb.AppendLine(Lang.Get("taxidermy:mount-see-handbook"));
         return sb.ToString();
     }
@@ -128,45 +123,40 @@ public sealed class BlockMount : Block
 
 public sealed class BEMount : BlockEntity, IAutoBoxesOwner
 {
-    // ── AUTO BOXES TEST (2026-10-05, Calm): the whole animal clickable ──────────────────────
-    // The client measures the built model (as it always has for Box) WITHOUT the one-block cap,
-    // up to ReachMax (6) each way, and tells the server; the server checks build permission, keeps it
-    // as Reach and puts fillers (src/autoboxes/) in the EMPTY spaces it reaches. Box stays the
-    // fallback until a Reach has arrived.
+    // The whole animal is clickable. The client measures the built model without the one-block cap, up to ReachMax (6)
+    // each way, and tells the server; the server checks build permission, keeps it as Reach and puts fillers
+    // (src/autoboxes/) in the empty spaces it reaches. Box stays the fallback until a Reach has arrived.
     public const int ReachPacketId = 4202;
-    /// <summary>The whole box is solid (Calm, 2026-10-06: "try collision for now for the whole thing"); false = walk-through as before.</summary>
-    public const bool ReachSolid = true;
-    public const float ReachMax = 6f;   // Calm, 2026-10-06: 6 long, 6 high, 6 wide (the big elephants)
+    public const float ReachMax = 6f;   // 6 each way, for the big elephants
 
-    /// <summary>The whole model's box (block frame, may reach past the block), as the server accepted it. Null until measured.</summary>
+    /// <summary>
+    /// The whole model's box (block frame, may reach past the block), as the server accepted it. Null until measured.
+    /// </summary>
     public Cuboidf Reach { get; private set; }
     private Dictionary<(int x, int y, int z), Cuboidf> reachPieces = new();
 
     /// <summary>
-    /// What is SOLID: one box per moving part of the posed model (body, each leg, neck, head, tail), as the server accepted
-    /// them - so you can walk under an elephant and between its legs (2026-10-06: a player wanted collision, but closer
-    /// than one box round the whole animal). The outline stays the whole Reach. Empty = the whole Reach is solid (a mount
-    /// measured before this, or a model with no parts).
+    /// What is solid: one box per moving part of the posed model (body, each leg, neck, head, tail), as the server
+    /// accepted them, so you can walk under an elephant and between its legs. The outline stays the whole Reach. Empty:
+    /// the whole Reach is solid (a mount measured before parts existed, or a model with none).
     /// </summary>
     public Cuboidf[] Parts { get; private set; } = [];
     private Dictionary<(int x, int y, int z), Cuboidf[]> solidPieces = new();
     private const int MaxParts = 64;
     private List<(int x, int y, int z)> heldFillers = new();
 
-    // THE WHOLE BOX FROM EVERY PART (Calm, 2026-10-05: "the box be full, not the parts one"): the
-    // mount and each filler give the WHOLE Reach, moved into their own frame, so the outline is the
-    // whole animal wherever it is aimed at. The game draws a box past its block's edge; it only
-    // TESTS a block's boxes when the line of sight crosses that block - which the fillers cover.
-    // The parts version is kept in backup/BlockMount.parts-outline.cs.
+    // The mount and each filler give the whole Reach, moved into their own frame, so the outline is the whole animal
+    // wherever it is aimed at. The game draws a box past its block's edge, but only tests a block's boxes when the line
+    // of sight crosses that block, which the fillers cover.
 
     /// <summary>The whole Reach in this block's own frame; null before one has arrived.</summary>
     public Cuboidf[] OwnBoxes() => Reach != null ? Outline() : null;
 
     /// <summary>
-    /// The outline (what you aim at and click), by this player's MountOutline setting: 0 the whole Reach, 1 every moving
-    /// part (drawn together), 2 the torso (Torso), 3 the head only (HeadBox), 4 the placed box only (Box, as before 1.0.4). Without parts (an older mount until re-measured, a model with no
-    /// joints) always the whole Reach. Each box is shown whole from every space the animal reaches. Collision is by parts
-    /// whatever this says. The SERVER always uses the whole Reach (it has no setting; fillers keep their owner either way).
+    /// The outline (what you aim at and click), by this player's MountOutline setting: 0 the whole Reach, 1 every
+    /// moving part, 2 the torso (Torso), 3 the head only (HeadBox), 4 the one-block placed box (Box). Without parts (an
+    /// older mount until re-measured, a model with no joints) always the whole Reach. Collision is by parts whatever
+    /// this says. The server has no setting and always uses the whole Reach.
     /// </summary>
     private Cuboidf[] Outline()
     {
@@ -178,18 +168,22 @@ public sealed class BEMount : BlockEntity, IAutoBoxesOwner
         if (mode == 1 && clipped.Length > 0) boxes = clipped;
         else if (mode == 2 && clipped.Length > 0) boxes = [Torso(clipped)];
         else if (mode == 3 && HeadBox != null && Intersect(HeadBox, Reach) is { } head) boxes = [head];
-        // the placed box only - the one-block box at its feet, as mounts had before 1.0.4 (Calm, 2026-10-06)
+        // the one-block box at its feet
         else if (mode == 4 && Box != null) boxes = [Box];
         outlineCache = (mode, boxes);
         return boxes;
     }
     private (int mode, Cuboidf[] boxes) outlineCache = (-1, null);
 
-    /// <summary>Client: the head's box (its joints' vertices), for the head-only outline; null when no head was found.</summary>
+    /// <summary>
+    /// Client: the head's box (its joints' vertices), for the head-only outline; null when no head was found.
+    /// </summary>
     private Cuboidf HeadBox { get => headBox; set { headBox = value; outlineCache = (-1, null); } }
     private Cuboidf headBox;
 
-    /// <summary>Client: one box round the vertices of the head's joints, less (dx, dy, dz) like ModelBox; null if none.</summary>
+    /// <summary>
+    /// Client: one box round the vertices of the head's joints, less (dx, dy, dz) like ModelBox; null if none.
+    /// </summary>
     private static Cuboidf HeadBoxOf(MeshData shared, MeshData built, float dx, float dy, float dz)
     {
         var joints = MountMesher.JointsOf(shared);
@@ -205,10 +199,10 @@ public sealed class BEMount : BlockEntity, IAutoBoxesOwner
     }
 
     /// <summary>
-    /// The torso, for the "body only" outline (Calm, 2026-10-06: "cover a bit more of the body so like the torso area"):
-    /// the biggest part, grown by every part that touches it, sits at body height (its middle within the biggest part's
-    /// height) and is thick like the body (its thinnest side at least half the biggest part's thinnest side) - the front
-    /// and rear body, a thick neck base; not the legs (below) nor the tail, ears or other thin parts. One box round them.
+    /// The torso, for the body-only outline: the biggest part, grown by every part that touches it, sits at body height
+    /// (its middle within the biggest part's height) and is thick like the body (its thinnest side at least half the
+    /// biggest part's). That takes the front and rear body and a thick neck base, but not the legs, tail, ears or other
+    /// thin parts. One box round them.
     /// </summary>
     private static Cuboidf Torso(Cuboidf[] parts)
     {
@@ -244,7 +238,7 @@ public sealed class BEMount : BlockEntity, IAutoBoxesOwner
     }
 
     public Cuboidf[] AutoCollisionAt(BlockPos cell) =>
-        ReachSolid && Reach != null && solidPieces.TryGetValue((cell.X - Pos.X, cell.Y - Pos.Y, cell.Z - Pos.Z), out var pieces) ? pieces : [];
+        Reach != null && solidPieces.TryGetValue((cell.X - Pos.X, cell.Y - Pos.Y, cell.Z - Pos.Z), out var pieces) ? pieces : [];
 
     private void SetReach(Cuboidf reach, Cuboidf[] parts = null)
     {
@@ -252,7 +246,8 @@ public sealed class BEMount : BlockEntity, IAutoBoxesOwner
         Parts = parts ?? [];
         outlineCache = (-1, null);
         reachPieces = AutoBoxes.Cut(reach);
-        // solid: each part's own pieces, kept inside the Reach (its cap) and only where the Reach has a space (a filler)
+        // solid: each part's own pieces, kept inside the Reach (its cap) and only where the Reach has a space (a
+        // filler)
         var solid = new Dictionary<(int x, int y, int z), List<Cuboidf>>();
         foreach (var part in Parts.Length > 0 ? Parts : (reach == null ? [] : [reach]))
         {
@@ -279,7 +274,9 @@ public sealed class BEMount : BlockEntity, IAutoBoxesOwner
     private static string KeyOf(Cuboidf reach, Cuboidf[] parts) =>
         reach == null ? null : string.Join(",", new[] { reach }.Concat(parts ?? []).SelectMany(b => new[] { b.X1, b.Y1, b.Z1, b.X2, b.Y2, b.Z2 }).Select(f => MathF.Round(f * 64)));
 
-    /// <summary>Client: tell the server the measured box and parts when they differ from what it holds (once per value).</summary>
+    /// <summary>
+    /// Client: tell the server the measured box and parts when they differ from what it holds (once per value).
+    /// </summary>
     private void SendReach(ICoreClientAPI capi, Cuboidf measured, Cuboidf[] parts)
     {
         if (measured == null) return;
@@ -331,7 +328,9 @@ public sealed class BEMount : BlockEntity, IAutoBoxesOwner
         return kept.OrderByDescending(b => (b.X2 - b.X1) * (b.Y2 - b.Y1) * (b.Z2 - b.Z1)).Take(MaxParts).ToArray();
     }
 
-    /// <summary>Server: a client's measurement. Builders only; capped at ReachMax each way and near the block.</summary>
+    /// <summary>
+    /// Server: a client's measurement. Builders only; capped at ReachMax each way and near the block.
+    /// </summary>
     private void ReceiveReach(IPlayer fromPlayer, byte[] data)
     {
         if (data == null || data.Length < 24 || data.Length % 24 != 0 || data.Length / 24 > MaxParts + 1 || Data == null) return;
@@ -378,11 +377,13 @@ public sealed class BEMount : BlockEntity, IAutoBoxesOwner
     }
 
     // ── The head on its own (client) ─────────────────────────────────────────────────────────
-    // Something client side may draw a mount's head itself, moving it as it likes: DrawHeadSeparately
-    // says which mounts, and those leave the head out of the block's mesh and keep it in SeparateHead
-    // instead. Nobody setting it - the normal case - changes nothing: the head is part of the mesh.
+    // Something client side may draw a mount's head itself, moving it as it likes: DrawHeadSeparately says which
+    // mounts, and those leave the head out of the block's mesh and keep it in SeparateHead instead. Nobody setting it -
+    // the normal case - changes nothing: the head is part of the mesh.
 
-    /// <summary>Client: asked on every rebuild. True: the head leaves the block's mesh for <see cref="SeparateHead"/>.</summary>
+    /// <summary>
+    /// Client: asked on every rebuild. True: the head leaves the block's mesh for <see cref="SeparateHead"/>.
+    /// </summary>
     public static System.Func<BEMount, bool> DrawHeadSeparately;
 
     /// <summary>Client: raised after every rebuild (the head may have been split off, or put back).</summary>
@@ -391,10 +392,15 @@ public sealed class BEMount : BlockEntity, IAutoBoxesOwner
     /// <summary>Client: raised once when the mount is broken or its chunk unloads.</summary>
     public static event Action<BEMount> MountGone;
 
-    /// <summary>Client: the head and its neck, in the block's frame like the mesh, when they were split off; else null.</summary>
+    /// <summary>
+    /// Client: the head and its neck, in the block's frame like the mesh, when they were split off; else null.
+    /// </summary>
     public MeshData SeparateHead { get; private set; }
 
-    /// <summary>Client: where <see cref="SeparateHead"/> turns from (the base of the neck, where it meets the body), block frame.</summary>
+    /// <summary>
+    /// Client: where <see cref="SeparateHead"/> turns from (the base of the neck, where it meets the body), block
+    /// frame.
+    /// </summary>
     public Vec3f HeadPivot { get; private set; }
 
     /// <summary>Broken or unloaded.</summary>
@@ -424,9 +430,10 @@ public sealed class BEMount : BlockEntity, IAutoBoxesOwner
     }
 
     /// <summary>
-    /// Split the head off the built mesh: two copies of it, the head's faces folded to a point in the one the block keeps and
-    /// every other face folded in the other - so neither copy loses any of the data the chunk mesh needs. "The head" is the
-    /// head with its neck (MountMesher.TurningJointsOf), cut as a head trophy is, so it turns where the neck meets the body.
+    /// Split the head off the built mesh: two copies of it, the head's faces folded to a point in the one the block
+    /// keeps and every other face folded in the other - so neither copy loses any of the data the chunk mesh needs.
+    /// "The head" is the head with its neck (MountMesher.TurningJointsOf), cut as a head trophy is, so it turns where
+    /// the neck meets the body.
     /// </summary>
     private void SplitHead(MeshData shared, float stand)
     {
@@ -457,7 +464,9 @@ public sealed class BEMount : BlockEntity, IAutoBoxesOwner
         HeadPivot = pivot;
     }
 
-    /// <summary>A face's four corners onto one point: nothing left to draw, every array still the same length.</summary>
+    /// <summary>
+    /// A face's four corners onto one point: nothing left to draw, every array still the same length.
+    /// </summary>
     private static void Fold(MeshData m, int face, Vec3f to)
     {
         for (int k = 0; k < 4; k++)
@@ -468,9 +477,9 @@ public sealed class BEMount : BlockEntity, IAutoBoxesOwner
     }
 
     /// <summary>
-    /// Where the turning part meets the body, in the rest frame (the animal faces -X, so its back is the +X side): the back
-    /// of its lower part, half way across - the base of the neck. The lower part only, so antlers and ears sweeping back and
-    /// up do not pull it away from there.
+    /// Where the turning part meets the body, in the rest frame (the animal faces -X, so its back is the +X side): the
+    /// back of its lower part, half way across - the base of the neck. The lower part only, so antlers and ears
+    /// sweeping back and up do not pull it away from there.
     /// </summary>
     private static Vec3f RestHeadPivot(MeshData shared, int[] joints, HashSet<int> headJoints)
     {
@@ -520,9 +529,8 @@ public sealed class BEMount : BlockEntity, IAutoBoxesOwner
     public float Tilt { get; private set; }
 
     /// <summary>
-    /// Whether the selection box moves with the nudge. Off (the default, and what every mount
-    /// placed before 2026-09-23 has) keeps it on the block, for dioramas; on lets you click a
-    /// nudged animal where it actually stands. Per mount, from the Adjust window.
+    /// Whether the selection box moves with the nudge. Off (the default) keeps it on the block, for dioramas; on lets
+    /// you click a nudged animal where it stands. Per mount, from the Adjust window.
     /// </summary>
     public bool BoxFollows { get; private set; }
 
@@ -533,11 +541,9 @@ public sealed class BEMount : BlockEntity, IAutoBoxesOwner
     private float appliedStand;
 
     /// <summary>
-    /// How far the mount sinks to stand on whatever is below: 0 on a full block or nothing,
-    /// negative on a slab or a chiselled block, from the highest collision box under the block
-    /// centre (or the highest anywhere if the centre is hollow). Calm, 2026-09-21: players
-    /// build their own stands out of chiselled blocks, so the animal must sit on the cut
-    /// surface whatever height it is.
+    /// How far the mount sinks to stand on what is below: 0 on a full block or nothing, negative on a slab or a
+    /// chiselled block, from the highest collision box under the block centre (or the highest anywhere if the centre is
+    /// hollow), so it sits on a player's cut stand at any height.
     /// </summary>
     private float StandOffset()
     {
@@ -574,8 +580,6 @@ public sealed class BEMount : BlockEntity, IAutoBoxesOwner
         MarkDirty(true);
     }
 
-    public void RotateBy(int dir) => SetRotation(Rotation + dir * GameMath.PI / 8);
-
     public void StandChanged()
     {
         Rebuild();
@@ -588,8 +592,8 @@ public sealed class BEMount : BlockEntity, IAutoBoxesOwner
         base.OnReceivedClientPacket(fromPlayer, packetid, data);
         if (packetid == ReachPacketId) { ReceiveReach(fromPlayer, data); return; }
         if (packetid != GuiDialogMount.PacketId || Data == null) return;
-        // Backstop only - the window opens after RequestAdjust has said yes. Silent, or a refusal
-        // would repeat for every number dragged.
+        // Backstop only - the window opens after RequestAdjust has said yes. Silent, or a refusal would repeat for
+        // every number dragged.
         if (Api.World.Claims.TestAccess(fromPlayer, Pos, EnumBlockAccessFlags.BuildOrBreak) != EnumWorldAccessResponse.Granted) return;
         var p = SerializerUtil.Deserialize<MountAdjustPacket>(data);
         if (p == null || !TaxidermyModSystem.AllFinite(p.OffX, p.OffY, p.OffZ, p.RotationDeg, p.TiltDeg)) return;
@@ -598,7 +602,7 @@ public sealed class BEMount : BlockEntity, IAutoBoxesOwner
         OffX = GameMath.Clamp(p.OffX, -16, 16) / 16f;
         OffY = GameMath.Clamp(p.OffY, -16, 16) / 16f;
         OffZ = GameMath.Clamp(p.OffZ, -16, 16) / 16f;
-        // The window's rotation is negated both ways so its up arrow turns the animal LEFT (Calm, 2026-09-22).
+        // Negated both ways so the window's up arrow turns the animal left.
         Rotation = GameMath.Mod(-p.RotationDeg * GameMath.DEG2RAD, GameMath.TWOPI);
         Tilt = GameMath.Clamp(p.TiltDeg, -90, 90) * GameMath.DEG2RAD;
         BoxFollows = p.BoxFollows;
@@ -607,9 +611,8 @@ public sealed class BEMount : BlockEntity, IAutoBoxesOwner
     }
 
     /// <summary>
-    /// Main thread only: on the client this inserts textures into the block atlas, which is
-    /// GPU work. OnTesselation runs on the tesselation thread and must only hand over what
-    /// was built here (shared reference sect.8d).
+    /// Main thread only: on the client this inserts textures into the block atlas. OnTesselation runs on the
+    /// tesselation thread and must only hand over what was built here.
     /// </summary>
     private void Rebuild()
     {
@@ -637,14 +640,12 @@ public sealed class BEMount : BlockEntity, IAutoBoxesOwner
         if (props != null)
         {
             float w = Math.Min(1f, props.CollisionBoxSize.X);
-            // At most one block in every direction (Calm, 2026-09-23, on an elephant): the engine
-            // only tests a block's selection boxes when the line of sight crosses that block's own
-            // cell, so the upper half of the old 2-block box was drawn but could never be clicked.
-            // It is the SIZE that is capped, not the position - with BoxFollows on, the whole box
-            // still travels with the animal, even past the block edge (Calm, same day).
+            // At most one block each way: the engine only tests a block's selection boxes when the line of sight
+            // crosses that block's own cell, so more could be drawn but not clicked. The size is capped, not the
+            // position: with BoxFollows the box still travels with the animal, even past the block edge.
             float h = Math.Min(1f, props.CollisionBoxSize.Y);
-            // By default the box stays on the block whatever the nudge (Calm, 2026-09-22); only the
-            // stand height moves it. With BoxFollows on it takes the same nudge as the mesh below.
+            // By default the box stays on the block whatever the nudge, and only the stand height moves it. With
+            // BoxFollows it takes the same nudge as the mesh below.
             float dx = 0, dy = 0, dz = 0;
             if (BoxFollows) (dx, dy, dz) = NudgeOffset();
             Box = new Cuboidf(0.5f - w / 2 + dx, stand + dy, 0.5f - w / 2 + dz, 0.5f + w / 2 + dx, h + stand + dy, 0.5f + w / 2 + dz);
@@ -653,31 +654,26 @@ public sealed class BEMount : BlockEntity, IAutoBoxesOwner
         try
         {
             var shared = MountMesher.Get(capi, Data, def);
-            // No mesh means no model to lift - the animal's mod is gone. Fall through to the
-            // placeholder below rather than returning, which is what left these blocks
-            // invisible in the first place (Calm saw it in game, 2026-09-22).
+            // No mesh means no model to lift: the animal's mod is gone. This falls through to the placeholder below.
             if (shared != null)
             {
                 mesh = shared.Clone();
-                // Tilt first, in the rest frame where the animal faces -X, so it is nose up/down
-                // whatever way it is then turned. About the feet, at the block centre.
+                // Tilt first, in the rest frame where the animal faces -X, so it is nose up/down whatever way it is
+                // then turned. About the feet, at the block centre.
                 if (Tilt != 0) mesh.Rotate(new Vec3f(0.5f, 0, 0.5f), 0, 0, Tilt);
-                // The nudge is in the ANIMAL's frame, applied before the turn so "forward" is the
-                // way it faces whichever way that is (Calm, 2026-09-22: it changed meaning by facing).
-                // Rest pose faces -X, so forward is -X and its right-hand side is -Z.
-                // Sign confirmed in game 2026-09-22: positive back/forward must move it forward.
+                // The nudge is in the animal's frame, applied before the turn, so "forward" is the way it faces. At
+                // rest it faces -X, so forward is -X and its right-hand side is -Z.
                 if (OffX != 0 || OffZ != 0) mesh.Translate(OffZ, 0, -OffX);
                 mesh.Rotate(new Vec3f(0.5f, 0, 0.5f), 0, Rotation, 0);
                 if (stand != 0 || OffY != 0) mesh.Translate(0, stand + OffY, 0);
-                // On the client the box comes from the model as drawn, not the collision box - the
-                // collision box is square and usually smaller, so long animals and lying poses had
-                // to be clicked in one spot (Calm, 2026-09-23). Box follows off: take the nudge back
-                // out, so the box stays put as before. The server cannot build the mesh and keeps
-                // the collision-sized box from above.
+                // On the client the box comes from the model as drawn: the collision box is square and usually smaller,
+                // so long animals and lying poses could only be clicked in one spot. Box follows off: the nudge is
+                // taken back out, so the box stays put. The server cannot build the mesh and keeps the collision-sized
+                // box from above.
                 float dx = 0, dy = 0, dz = 0;
                 if (!BoxFollows) (dx, dy, dz) = NudgeOffset();
                 Box = ModelBox(mesh, dx, dy, dz) ?? Box;
-                // Auto boxes: the same box without the one-block cap goes to the server, with the moving parts for collision.
+                // The same box without the one-block cap goes to the server, with the moving parts for collision.
                 SendReach(capi, ModelBox(mesh, dx, dy, dz, ReachMax), PartBoxes(shared, mesh, dx, dy, dz));
                 HeadBox = HeadBoxOf(shared, mesh, dx, dy, dz);
                 if (DrawHeadSeparately?.Invoke(this) == true) SplitHead(shared, stand);
@@ -688,17 +684,15 @@ public sealed class BEMount : BlockEntity, IAutoBoxesOwner
             // Log the full exception: on a NullReference the message is empty and the frame is the diagnosis.
             Api.Logger.Error("[Taxidermy] Cannot build the mount at {0} ({1}): {2}", Pos, Data.GetString("entityCode"), e);
         }
-        // Nothing to draw and a specimen that says there should be: the animal's mod is not
-        // installed. Show the placeholder cube rather than empty air, which is impossible to
-        // find (Calm, 2026-09-22). The block breaks into nothing - see BlockMount.Orphaned.
+        // Nothing to draw, and the specimen says there should be: the animal's mod is not installed. A placeholder cube
+        // is easier to find than empty air. It breaks into nothing; see BlockMount.Orphaned.
         mesh ??= MountMesher.GetPlaceholderMesh(capi);
     }
 
     /// <summary>
-    /// One box around the built model, less (dx, dy, dz), at most one block in each direction:
-    /// a model wider or deeper than a block keeps a block-wide box centred on it, a taller one
-    /// keeps the bottom block (the feet - the part above could never be clicked anyway). Never
-    /// thinner than an eighth, so a flat pose still has something to click.
+    /// One box around the built model, less (dx, dy, dz), at most one block in each direction: a model wider or deeper
+    /// than a block keeps a block-wide box centred on it, a taller one keeps the bottom block (the feet - the part
+    /// above could never be clicked anyway). Never thinner than an eighth, so a flat pose still has something to click.
     /// </summary>
     private static Cuboidf ModelBox(MeshData m, float dx, float dy, float dz, float cap = 1f)
     {
@@ -729,11 +723,10 @@ public sealed class BEMount : BlockEntity, IAutoBoxesOwner
     }
 
     /// <summary>
-    /// Where the nudge puts the animal, in world blocks - the same move Rebuild gives the mesh:
-    /// (OffZ, 0, -OffX) in the animal's frame, turned by Rotation, plus OffY. Turned through
-    /// Mat4f.RotateXYZ + MulWithVec3, which is exactly what MeshData.Rotate applies to every vertex
-    /// (vsapi MeshData.MatrixTransform), so the box cannot disagree with the model on direction
-    /// or sign. Tilt is left out: it pivots about the feet and barely moves the footprint.
+    /// Where the nudge puts the animal, in world blocks - the same move Rebuild gives the mesh: (OffZ, 0, -OffX) in the
+    /// animal's frame, turned by Rotation, plus OffY. Turned through Mat4f.RotateXYZ + MulWithVec3, which is exactly
+    /// what MeshData.Rotate applies to every vertex (vsapi MeshData.MatrixTransform), so the box cannot disagree with
+    /// the model on direction or sign. Tilt is left out: it pivots about the feet and barely moves the footprint.
     /// </summary>
     private (float dx, float dy, float dz) NudgeOffset()
     {
@@ -750,9 +743,8 @@ public sealed class BEMount : BlockEntity, IAutoBoxesOwner
     {
         var m = mesh;
         if (m != null) mesher.AddMeshData(m);
-        // Chiselling the stand changes no block id, so no neighbour-change event reaches us -
-        // but it does redraw the chunk, which lands here. Rebuild on the main thread if the
-        // stand's height moved.
+        // Chiselling the stand changes no block id, so no neighbour-change event reaches us - but it does redraw the
+        // chunk, which lands here. Rebuild on the main thread if the stand's height moved.
         if (Data != null && Math.Abs(StandOffset() - appliedStand) > 0.001f)
             Api.Event.EnqueueMainThreadTask(() => { Rebuild(); MarkDirty(true); }, "taxidermy-stand");
         return true;   // nothing else to draw - the block has no shape worth showing

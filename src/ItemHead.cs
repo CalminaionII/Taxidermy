@@ -9,24 +9,22 @@ using Vintagestory.GameContent;
 namespace Taxidermy;
 
 /// <summary>
-/// The animal's head - raw off the carcass, preserved out of the borax barrel. One class, one
-/// itemtype with a <c>state</c> variant. Renders as the head lifted out of the animal's own
-/// model (eyes removed, antlers on), and can be set down through vanilla ground storage.
-///
-/// Calm's decision of 2026-09-21: a head instead of a pelt or a body. Same process, nothing
-/// to model, and a preserved head is also what a wall trophy will be made of.
+/// The animal's head, raw off the carcass or preserved out of the borax barrel. One class, one itemtype with a
+/// <c>state</c> variant. It renders as the head lifted out of the animal's own model and can be set down through
+/// vanilla ground storage.
 /// </summary>
-public sealed class ItemHead : Item, IContainedMeshSource
+public sealed class ItemHead : Item, IContainedMeshSource, IHandBookPageCodeProvider
 {
+    /// <summary>H on any head, or a link to one, opens its group page showing this animal (HandbookVariants).</summary>
+    public string HandbookPageCodeForStack(IWorldAccessor world, ItemStack stack) => Handbook.HandbookVariants.PageCodeFor(world?.Api, stack);
+
     public bool IsPreserved => Variant["state"] == "preserved";
 
     /// <summary>
-    /// A head's "pelt" follows the CURRENT rules, not the ones it was harvested under (Calm,
-    /// 2026-09-24): whenever it enters a slot or the grid, its token is worked out again from the
-    /// animal it records - so switching CustomPelts off turns every head in play to a plain pelt
-    /// of its size (own pelts stop dropping), and on again back to its own. The same pass gives
-    /// heads made in 1.0.0 (live since ~2026-09-22), which carry only the flat "hideSize" its
-    /// recipes matched, the "pelt" 1.0.1's recipes match. Both recipe sets always exist.
+    /// A head's "pelt" follows the current rules, not the ones it was harvested under: whenever it enters a slot or the
+    /// grid, its token is worked out again from the animal it records. So switching own pelts off turns every head in
+    /// play to a plain pelt of its size, and on again back to its own. The same pass upgrades heads made in 1.0.0,
+    /// which carry only the flat "hideSize".
     /// </summary>
     public override bool MatchesForCrafting(ItemStack inputStack, IRecipeBase gridRecipe, IRecipeIngredient ingredient)
     {
@@ -35,13 +33,10 @@ public sealed class ItemHead : Item, IContainedMeshSource
     }
 
     /// <summary>
-    /// One plain head per state, and since 2026-10-02 the ONLY head page (Calm: one generic head
-    /// instead of every animal's - about 320 pages); the creative tabs still list every animal and
-    /// coat. The handbook lists a barrel recipe on a page only when the recipe's output EQUALS the
-    /// page's stack, and the barrel's output carries no animal - so no per-animal page ever showed
-    /// it. Not in the creative tabs: a head with no animal cannot be mounted.
+    /// Every animal and coat, folded into one cycling page per state by HandbookGroups. The barrel recipe each page
+    /// shows is that animal's own (HandbookVariants).
     /// </summary>
-    public override List<ItemStack> GetHandBookStacks(ICoreClientAPI capi) => [new ItemStack(this)];
+    public override List<ItemStack> GetHandBookStacks(ICoreClientAPI capi) => Handbook.HandbookVariants.StacksOf(this);
 
     /// <summary>Also on entering any slot - the grid may test attributes before it asks MatchesForCrafting.</summary>
     public override void OnModifiedInInventorySlot(IWorldAccessor world, ItemSlot slot, ItemStack extractedStack = null)
@@ -52,8 +47,8 @@ public sealed class ItemHead : Item, IContainedMeshSource
 
     internal bool SyncPeltToken(ItemStack stack)
     {
-        // The SERVER's setting decides: a client re-stamping from its own local config would flip the
-        // head back (Calm saw "its own pelt" with own pelts switched off). The server's stamp syncs.
+        // The server's setting decides: a client re-stamping from its own config would flip the head back. The server's
+        // stamp syncs.
         if (api.Side != EnumAppSide.Server) return false;
         var data = Specimen.Of(stack);
         if (data == null) return false;
@@ -92,25 +87,24 @@ public sealed class ItemHead : Item, IContainedMeshSource
         }
         var def = api.ModLoader.GetModSystem<TaxidermyModSystem>().Find(data);
         string sizeCode = data.GetString("hideSize") ?? def?.HideSize ?? "medium";
-        // The steps moved to the handbook page (Calm, 2026-09-29); the tooltip keeps what is
-        // particular to THIS head - sex and, preserved, the pelt its mount takes (Calm: no size on raw heads).
+        // The steps are in the handbook. The tooltip has what is particular to this head: its sex and, preserved, the
+        // pelt its mount takes.
         if (ItemTaxidermyHide.SexLine(world, data) is { } sex) dsc.AppendLine(sex);
         if (IsPreserved)
         {
-            // "pelt" is stamped by the server under its category's current own-pelt switch (SyncPeltToken),
-            // so this follows the setting just as the recipe does: own pelts on names the animal's
-            // pelt; off, any plain pelt of the size (Calm, 2026-09-29).
+            // "pelt" is stamped by the server under its category's own-pelt switch (SyncPeltToken), so this follows the
+            // setting as the recipe does: on names the animal's pelt, off any plain pelt of the size.
             string pelt = data.GetString("pelt");
             bool own = pelt != null && !pelt.StartsWith("size-");
             string label = ItemTaxidermyHide.AnimalLabel(data);
             string animal = label.Length > 0 ? char.ToUpperInvariant(label[0]) + label.Substring(1) : label;
-            // Pelts made per sex ({gender} in the definition's label) name it too: "Wolf pelt (male)" (Calm, 2026-10-02).
+            // Pelts made per sex ({gender} in the definition's label) name it too: "Wolf pelt (male)".
             string peltSex = own && def?.Pelt?.Contains("{gender}") == true ? PeltSex(world, data) : null;
             if (peltSex != null) dsc.AppendLine(Lang.Get("taxidermy:head-needs-pelt-own-sex", animal, peltSex));
             else if (own) dsc.AppendLine(Lang.Get("taxidermy:head-needs-pelt-own", animal));
             else
             {
-                // "Mount pelt: Medium plain pelt" - one line, size first (Calm, 2026-09-29).
+                // "Mount pelt: Medium plain pelt".
                 string size = Lang.Get("taxidermy:size-" + sizeCode);
                 dsc.AppendLine(Lang.Get("taxidermy:head-needs-pelt-plain", size.Length > 0 ? char.ToUpperInvariant(size[0]) + size.Substring(1) : size));
             }
@@ -121,7 +115,9 @@ public sealed class ItemHead : Item, IContainedMeshSource
         dsc.AppendLine(Lang.Get("taxidermy:head-see-handbook"));
     }
 
-    /// <summary>"male" / "female" from the animal's gender variant, lower case for the pelt line; null without one.</summary>
+    /// <summary>
+    /// "male" / "female" from the animal's gender variant, lower case for the pelt line; null without one.
+    /// </summary>
     private static string PeltSex(IWorldAccessor world, ITreeAttribute data)
     {
         var props = world.GetEntityType(new AssetLocation(data.GetString("entityCode", "")));
@@ -138,19 +134,17 @@ public sealed class ItemHead : Item, IContainedMeshSource
         {
             var meshRef = MountMesher.GetHeadItemMesh(capi, data, def);
             if (meshRef != null) renderinfo.ModelRef = meshRef;
-            // A head in hand is about to be placed: build its ground and mount meshes now, so the
-            // display has them on its first look instead of flashing the item's default mesh (Calm,
-            // 2026-10-03: placing a head flashed a hide). Cached, so a no-op after the first frame.
+            // A head in hand is about to be placed: build its ground and mount meshes now, so the display has them on
+            // its first look instead of flashing the default mesh. Cached, so a no-op after the first frame.
             if (target == EnumItemRenderTarget.HandTp && Specimen.Of(itemstack) != null) BuildBoth(capi, data, def);
         }
         base.OnBeforeRender(capi, itemstack, target, ref renderinfo);
     }
 
     /// <summary>
-    /// Ground storage and vanilla's antler mount both ask here, from the TESSELATION thread. The head is built on the main thread
-    /// (atlas inserts are GPU work); if it is not cached yet, queue the build and a redraw and
-    /// let vanilla show the default item mesh for a frame - the same dance BEGroundStorage
-    /// does for its own stacking models.
+    /// Ground storage and vanilla's antler mount both ask here, from the TESSELATION thread. The head is built on the
+    /// main thread (atlas inserts are GPU work); if it is not cached yet, queue the build and a redraw and let vanilla
+    /// show the default item mesh for a frame - the same dance BEGroundStorage does for its own stacking models.
     /// </summary>
     public MeshData GenMesh(ItemSlot slot, ITextureAtlasAPI targetAtlas, BlockPos atBlockPos)
     {
@@ -160,25 +154,27 @@ public sealed class ItemHead : Item, IContainedMeshSource
         if (def == null) return null;
 
         bool onAntlerMount = atBlockPos != null && capi.World.BlockAccessor.GetBlock(atBlockPos) is BlockAntlerMount;
-        // On the ground the head is settled flush by the head alone, its neck going into the floor (MountMesher.BuildHead, flat).
+        // On the ground the head is settled flush by the head alone, its neck going into the floor
+        // (MountMesher.BuildHead, flat).
         bool onGround = atBlockPos != null && capi.World.BlockAccessor.GetBlock(atBlockPos) is BlockGroundStorage;
         if (Environment.CurrentManagedThreadId == RuntimeEnv.MainThreadId) BuildBoth(capi, data, def);
         var cached = MountMesher.TryGetHeadMesh(capi, data, def, onGround);
         if (cached != null)
         {
-            if (onAntlerMount || onGround) HeadPeltBoxes.Notice(atBlockPos);   // auto boxes test
+            if (onAntlerMount || onGround) HeadPeltBoxes.Notice(atBlockPos);
             return onAntlerMount ? ForAntlerMount(cached.Clone(), data) : ForGround(cached.Clone());
         }
 
-        // Returning null makes the display cache vanilla's default mesh - under our WAIT key while the
-        // head is unbuilt (GetMeshCacheKey), so once both versions exist the key changes and the
-        // redraw asks here again (DisplayMeshes).
-        // one build of both versions per specimen, however many displays ask (DisplayMeshes.Queue)
+        // Returning null makes the display cache vanilla's default mesh - under our WAIT key while the head is unbuilt
+        // (GetMeshCacheKey), so once both versions exist the key changes and the redraw asks here again
+        // (DisplayMeshes). one build of both versions per specimen, however many displays ask (DisplayMeshes.Queue)
         DisplayMeshes.Queue(capi, "head|" + MountMesher.IdentityKey(data) + "|" + def.Code + "|" + def.Scale, atBlockPos, () => BuildBoth(capi, data, def));
         return null;
     }
 
-    /// <summary>Main thread: both versions of the head - on the ground (flat) and upright - so one key covers every display.</summary>
+    /// <summary>
+    /// Main thread: both versions of the head - on the ground (flat) and upright - so one key covers every display.
+    /// </summary>
     private static void BuildBoth(ICoreClientAPI capi, ITreeAttribute data, AnimalDefinition def)
     {
         MountMesher.GetHeadMesh(capi, data, def, false);
@@ -186,11 +182,11 @@ public sealed class ItemHead : Item, IContainedMeshSource
     }
 
     /// <summary>
-    /// Vanilla's antler mount draws its item rotated by (meshAngle - 90 degrees) about the block
-    /// centre, and at meshAngle 0 its plaque backs onto the NORTH wall, facing south. Our head
-    /// faces -X at rest, so before that rotation it has to face +X with its back at the west
-    /// edge - then the mount's own rotation puts it facing out from whichever wall it is on.
-    /// Preserved heads carry <c>antlerMountable: true</c>, which is all the mount asks for.
+    /// Vanilla's antler mount draws its item rotated by (meshAngle - 90 degrees) about the block centre, and at
+    /// meshAngle 0 its plaque backs onto the NORTH wall, facing south. Our head faces -X at rest, so before that
+    /// rotation it has to face +X with its back at the west edge - then the mount's own rotation puts it facing out
+    /// from whichever wall it is on. Preserved heads carry <c>antlerMountable: true</c>, which is all the mount asks
+    /// for.
     /// </summary>
     private static MeshData ForAntlerMount(MeshData m, ITreeAttribute data)
     {
@@ -202,12 +198,11 @@ public sealed class ItemHead : Item, IContainedMeshSource
             minY = Math.Min(minY, m.xyz[i * 3 + 1]);
             maxY = Math.Max(maxY, m.xyz[i * 3 + 1]);
         }
-        // Adjust window: sideways is along the wall (z here, before the mount's own turn), up/down
-        // is y, back/forward is x - the head's depth axis at this point.
-        // Signs confirmed in game 2026-09-22: positive back/forward comes OUT from the wall.
+        // Adjust window: sideways is along the wall (z here, before the mount's own turn), up/down is y, back/forward
+        // is x. Positive back/forward comes out from the wall.
         if (m.VerticesCount > 0) m.Translate(1f / 16 - minX - data.GetFloat("offz"), 0.5f - (minY + maxY) / 2 + data.GetFloat("offy"), data.GetFloat("offx"));
-        // Tilt: nose up/down about the head's own centre. The head faces +X here, so the
-        // horizontal axis across it is Z.
+        // Tilt: nose up/down about the head's own centre. The head faces +X here, so the horizontal axis across it is
+        // Z.
         float tilt = data.GetFloat("tilt");
         if (tilt != 0 && m.VerticesCount > 0)
         {
@@ -224,10 +219,9 @@ public sealed class ItemHead : Item, IContainedMeshSource
     }
 
     /// <summary>
-    /// Ground storage sets its mesh angle to atan2(player - block), snapped to 90 degrees, and
-    /// rotates the item by it - so an item facing +Z at rest ends up facing the player. The head
-    /// faces -X at rest: a quarter turn first (Calm, 2026-09-21: heads on the ground should
-    /// face the player like the mounts do).
+    /// Ground storage sets its mesh angle to atan2(player - block), snapped to 90 degrees, and rotates the item by it,
+    /// so an item facing +Z at rest ends up facing the player. The head faces -X at rest, so it gets a quarter turn
+    /// first.
     /// </summary>
     internal static MeshData ForGround(MeshData m)
     {
@@ -243,8 +237,8 @@ public sealed class ItemHead : Item, IContainedMeshSource
     }
 
     /// <summary>
-    /// True once both versions of this head are built, or when there is nothing of ours to build
-    /// (no specimen, no definition - the display's default mesh is then the final answer).
+    /// True once both versions of this head are built, or when there is nothing of ours to build (no specimen, no
+    /// definition - the display's default mesh is then the final answer).
     /// </summary>
     private bool HeadBuilt(ITreeAttribute data)
     {

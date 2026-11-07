@@ -7,9 +7,8 @@ using Vintagestory.API.MathTools;
 namespace Taxidermy;
 
 /// <summary>
-/// What the client sends when a field in the Adjust window changes. Every packet type needs a
-/// ProtoContract, broadcast or not - shared reference sect.8c; singleplayer would never show
-/// it missing.
+/// What the client sends when a field in the Adjust window changes. Every packet type needs a ProtoContract; single
+/// player would never show it missing.
 /// </summary>
 [ProtoContract(ImplicitFields = ImplicitFields.AllPublic)]
 public class MountAdjustPacket
@@ -21,16 +20,6 @@ public class MountAdjustPacket
     public bool BoxFollows;
 }
 
-/// <summary>
-/// The Adjust window for a placed mount: pose, X/Y/Z nudge, rotation. Opened from the wrench's
-/// "Adjust mount" tool mode. Live: every change goes to the server as a block entity packet
-/// and comes back to every client through the block entity's normal sync. Calm asked for
-/// fine tuning because poses shift the animal off centre and some sit at the wrong height
-/// (2026-09-21); this is also the pose menu he mentioned on day one.
-///
-/// Layout with a running y, per shared reference sect.10e; number inputs with IntMode off
-/// and an explicit Interval per field, for the same reason.
-/// </summary>
 /// <summary>Adjustments for a head hanging on a vanilla antler mount, sent over the mod channel.</summary>
 [ProtoContract(ImplicitFields = ImplicitFields.AllPublic)]
 public class HeadAdjustPacket
@@ -42,10 +31,9 @@ public class HeadAdjustPacket
 }
 
 /// <summary>
-/// Server to client: "you may adjust this - open the window". The client cannot check land
-/// claims itself (vsapi ILandClaimAPI: TryAccess/TestAccess "return always true when called on
-/// the client"), so opening the window waits for the server's yes (Calm, 2026-09-23). A refused
-/// player gets vanilla's claim message from TryAccess instead, once.
+/// Server to client: "you may adjust this, open the window". The client cannot check land claims (TryAccess and
+/// TestAccess always return true there), so opening the window waits for the server's yes. A refused player gets
+/// vanilla's claim message from TryAccess instead.
 /// </summary>
 [ProtoContract(ImplicitFields = ImplicitFields.AllPublic)]
 public class OpenAdjustPacket
@@ -54,6 +42,11 @@ public class OpenAdjustPacket
     public bool Head;   // true: a head on a vanilla antler mount; false: our mount block
 }
 
+/// <summary>
+/// The Adjust window for a placed mount or a head on an antler mount: pose, nudge, rotation and tilt. Live: every
+/// change goes to the server and comes back to every client through the normal sync. Number inputs have IntMode off and
+/// an Interval per field.
+/// </summary>
 public sealed class GuiDialogMount : GuiDialog
 {
     public const int PacketId = 4201;
@@ -139,9 +132,8 @@ public sealed class GuiDialogMount : GuiDialog
         }
         if (hasBox)
         {
-            // Calm, 2026-09-23: off keeps the box on the block (dioramas - animals nudged close
-            // together still each click on their own block); on moves it with the animal, so a
-            // nudged one is clicked where it stands rather than on the empty space it left.
+            // Off keeps the box on the block, so animals nudged close together each click on their own block. On moves
+            // it with the animal, so a nudged one is clicked where it stands.
             c.AddStaticText(Lang.Get("taxidermy:adjust-boxfollows"), CairoFont.WhiteDetailText(), Row(0, y + 4, LabelW + 60, LabelH));
             c.AddSwitch(OnBoxFollows, Row(LabelW + 70, y, 30, 30), "boxfollows");
             y += RowH + 6;

@@ -4,11 +4,8 @@ using Vintagestory.API.Common.Entities;
 namespace Taxidermy;
 
 /// <summary>
-/// The Needle and Thread (1.0.4, Calm: "own needle and thread ... bone and then something to use as
-/// stitching"): a bone needle threaded with flax twine, 60 stitches. Sewing a mount uses thread by
-/// the animal's size - in the grid all at once (an <c>isTool</c> ingredient), in the world one
-/// stage at a time (BlockAssembly). When the thread runs out the needle is not lost: the bare
-/// needle comes back, ready to be threaded again with more twine.
+/// The old threaded Needle and Thread, 60 stitches. Sewing a mount uses thread by the animal's size. Needles already
+/// threaded keep working, and when the thread runs out the bare needle comes back.
 /// </summary>
 public sealed class ItemNeedleThread : Item
 {

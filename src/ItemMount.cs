@@ -9,12 +9,17 @@ using Vintagestory.API.Server;
 namespace Taxidermy;
 
 /// <summary>
-/// The finished mount as an item: right-click a block to place <c>taxidermy:mount</c> carrying
-/// the same specimen data; picking the block up gives this back. Renders as the animal itself,
-/// like vanilla's taxidermied fish, fitted into a slot.
+/// The finished mount as an item: right-click a block to place <c>taxidermy:mount</c> carrying the same specimen data;
+/// picking the block up gives this back. Renders as the animal itself, like vanilla's taxidermied fish, fitted into a
+/// slot.
 /// </summary>
-public sealed class ItemMount : Item
+public sealed class ItemMount : Item, Vintagestory.GameContent.IHandBookPageCodeProvider
 {
+    /// <summary>
+    /// H on any mount, or a link to one, opens its group page showing this animal (HandbookVariants).
+    /// </summary>
+    public string HandbookPageCodeForStack(IWorldAccessor world, ItemStack stack) => Handbook.HandbookVariants.PageCodeFor(world?.Api, stack);
+
     public override string GetHeldItemName(ItemStack itemStack)
     {
         var data = Specimen.Of(itemStack);
@@ -31,7 +36,7 @@ public sealed class ItemMount : Item
             dsc.AppendLine(Lang.Get("taxidermy:mount-generic"));
             return;
         }
-        // Controls live in the handbook page (Calm, 2026-09-29); the held-help overlay still shows "Place mount".
+        // Controls are in the handbook page; the held-help overlay still shows "Place mount".
         if (ItemTaxidermyHide.SexLine(world, data) is { } sex) dsc.AppendLine(sex);
         var attachments = Specimen.Attachments(data);
         if (attachments.Length > 0)
@@ -53,8 +58,8 @@ public sealed class ItemMount : Item
             return;
         }
         handling = EnumHandHandling.PreventDefault;
-        // Placed on the server only; the block change syncs down. The client just claims the
-        // interaction so nothing else runs.
+        // Placed on the server only; the block change syncs down. The client just claims the interaction so nothing
+        // else runs.
         if (api.Side != EnumAppSide.Server || !firstEvent) return;
 
         var player = (byEntity as EntityPlayer)?.Player;
@@ -77,17 +82,16 @@ public sealed class ItemMount : Item
             if (failureCode != "__ignore__") (api as ICoreServerAPI)?.SendIngameError(player as IServerPlayer, failureCode, Lang.Get("placefailure-" + failureCode));
             return;
         }
-        // Face the player, snapped to 45 degrees. An entity looks at something with
-        // yaw = atan2(dx, dz) (vsessentialsmod AiTaskLookAtEntity), and EntityShapeRenderer
-        // then turns every model by yaw + 90 degrees - so the mesh needs both. The first
-        // build used the player's own yaw and every mount faced west.
+        // Face the player, snapped to 45 degrees. An entity looks at something with yaw = atan2(dx, dz)
+        // (vsessentialsmod AiTaskLookAtEntity), and EntityShapeRenderer then turns every model by yaw + 90 degrees - so
+        // the mesh needs both. The first build used the player's own yaw and every mount faced west.
         if (world.BlockAccessor.GetBlockEntity(sel.Position) is BEMount be)
         {
             double dx = byEntity.Pos.X - (sel.Position.X + 0.5), dz = byEntity.Pos.Z - (sel.Position.Z + 0.5);
             float yaw = (float)Math.Atan2(dx, dz) + GameMath.PIHALF;
             be.SetRotation(MathF.Round(yaw / (GameMath.PI / 4)) * (GameMath.PI / 4));
         }
-        // Server-only path: no dualCallByPlayer, or the placer is the one person who hears nothing (shared reference sect.10c).
+        // Server-only path: no dualCallByPlayer, or the placer is the one person who hears nothing.
         world.PlaySoundAt(new AssetLocation("game:sounds/block/leather"), sel.Position.X + 0.5, sel.Position.Y + 0.5, sel.Position.Z + 0.5, null);
         if (player.WorldData.CurrentGameMode != EnumGameMode.Creative)
         {
@@ -97,11 +101,10 @@ public sealed class ItemMount : Item
     }
 
     /// <summary>
-    /// The handbook lists what a recipe makes by running it, and a mount recipe's output carries
-    /// only the head's pelt label, not its animal - one per recipe, so the needle, dry grass and
-    /// every pelt page listed 112 empty mounts (Calm, 2026-10-02). Mounts with no animal are all
-    /// the same item, so the handbook keeps one. Real mounts always carry their animal and never
-    /// stack (max stack 1), so nothing else sees this.
+    /// The handbook lists what a recipe makes by running it, and a mount recipe's output carries only the head's pelt
+    /// label, not its animal, so the needle, dry grass and every pelt page would list a row of empty mounts. Mounts
+    /// with no animal are all the same item, so the handbook keeps one. Real mounts always carry their animal and never
+    /// stack, so nothing else sees this.
     /// </summary>
     public override bool Equals(ItemStack thisStack, ItemStack otherStack, params string[] ignoreAttributeSubTrees)
     {

@@ -1,5 +1,3 @@
-using System.Collections.Generic;
-using System.Linq;
 using Vintagestory.API.Client;
 using Vintagestory.API.Common;
 using Vintagestory.API.Datastructures;
@@ -9,11 +7,9 @@ using Vintagestory.GameContent;
 namespace Taxidermy;
 
 /// <summary>
-/// What is left of a head after skinning: vanilla's generic container (take-only through its
-/// <c>retrieveOnly</c> attribute, vanilla's window), still drawn as the HEAD it was, lying as it lay
-/// (Calm, 2026-09-26) - vanilla's bone pile only if the head cannot be drawn. Once it is empty and
-/// the window is closed it becomes that pile for real - <c>carcass-&lt;size&gt;</c>, broken for bones
-/// and cleared by vanilla after two weeks, like the bones a dead animal rots into.
+/// Old worlds only: skinning no longer makes this block (BehaviorHeadSkinning drops everything on the ground). What was
+/// left of a skinned head: vanilla's generic container, take-only through its <c>retrieveOnly</c> attribute, drawn as
+/// the head it was. It goes once it is empty and its window is closed.
 /// </summary>
 public sealed class BESkinnedHead : BlockEntityGenericContainer
 {
@@ -24,18 +20,10 @@ public sealed class BESkinnedHead : BlockEntityGenericContainer
     private float meshAngle;
 
     /// <summary>
-    /// False until this block entity's data has arrived. The client gets the new block a moment
-    /// before its data, and drawing then showed the bone pile for a blink before the head (Calm,
-    /// 2026-09-26: "turns to carcass but then quickly changes to the head") - so nothing is drawn
-    /// until it knows what it is.
+    /// False until this block entity's data has arrived. The client gets the block a moment before its data, so nothing
+    /// is drawn until it knows what it is, or the bone pile would flash first.
     /// </summary>
     private bool dataLoaded;
-
-    public void SetHead(ItemStack head, float angle)
-    {
-        headData = Specimen.Of(head)?.Clone();
-        meshAngle = angle;
-    }
 
     public override void ToTreeAttributes(ITreeAttribute tree)
     {
@@ -45,9 +33,9 @@ public sealed class BESkinnedHead : BlockEntityGenericContainer
     }
 
     /// <summary>
-    /// The head exactly as ground storage drew it - the same flat mesh (ItemHead.GenMesh), turned by
-    /// the same angle about the block centre (BEGroundStorage.genTransformationMatrices). The mesh is
-    /// built on the main thread; until it exists nothing is drawn rather than a flash of bones.
+    /// The head exactly as ground storage drew it - the same flat mesh (ItemHead.GenMesh), turned by the same angle
+    /// about the block centre (BEGroundStorage.genTransformationMatrices). The mesh is built on the main thread; until
+    /// it exists nothing is drawn rather than a flash of bones.
     /// </summary>
     public override bool OnTesselation(ITerrainMeshPool mesher, ITesselatorAPI tessThreadTesselator)
     {
@@ -73,31 +61,17 @@ public sealed class BESkinnedHead : BlockEntityGenericContainer
     public override void Initialize(ICoreAPI api)
     {
         base.Initialize(api);
-        // Vanilla's container plays the chest lid (Calm: "remove the sound as it has a chest sound");
-        // an empty SoundAttributes is what the window itself defaults to - it plays nothing.
+        // An empty SoundAttributes plays nothing, instead of vanilla's chest lid.
         OpenSound = new SoundAttributes();
         CloseSound = new SoundAttributes();
-        // Bones only once the window is CLOSED and empty, as vanilla's carcass does (Calm, 2026-09-26:
-        // turning into bones on the last slot change shut the window and dropped the item in hand).
+        // Only once the window is closed and empty, as vanilla's carcass does: acting on the last slot change would
+        // shut the window and drop the item in hand.
         if (api.Side == EnumAppSide.Server) Inventory.OnInventoryClosed += _ => BecomeBonesIfEmpty();
     }
 
     /// <summary>
-    /// The window grows to fit, as vanilla's harvest window does (it adds a slot per extra drop):
-    /// the block's 4 slots are a minimum, so a long headSkinningDrops list is never cut short.
-    /// </summary>
-    public void Fill(IEnumerable<ItemStack> stacks)
-    {
-        var list = stacks.ToList();
-        if (list.Count > Inventory.Count && Inventory is InventoryGeneric grown) grown.AddSlots(list.Count - Inventory.Count);
-        for (int i = 0; i < list.Count && i < Inventory.Count; i++) Inventory[i].Itemstack = list[i];
-        MarkDirty(true);
-        BecomeBonesIfEmpty();
-    }
-
-    /// <summary>
-    /// Loading (a reload, or the server's sync to the client) builds the block's 4 slots and reads
-    /// only those; a grown window would lose the rest. Grow to the saved count and read again.
+    /// Loading (a reload, or the server's sync to the client) builds the block's 4 slots and reads only those; a grown
+    /// window would lose the rest. Grow to the saved count and read again.
     /// </summary>
     public override void FromTreeAttributes(ITreeAttribute tree, IWorldAccessor worldForResolving)
     {
@@ -121,7 +95,7 @@ public sealed class BESkinnedHead : BlockEntityGenericContainer
         Api.World.RegisterCallback(_ =>
         {
             if (Api.World.BlockAccessor.GetBlockEntity(Pos) != this || !Inventory.Empty) return;
-            // Gone, not a bone pile (Calm, 2026-09-30). Only skinned heads from before that day still reach here.
+            // Gone, rather than a bone pile.
             Api.World.BlockAccessor.SetBlock(0, Pos);
         }, 0);
     }

@@ -8,18 +8,14 @@ using Vintagestory.GameContent;
 namespace Taxidermy;
 
 /// <summary>
-/// The one Harmony patch in the mod, and why it exists.
+/// The mod's Harmony patches, and the reason for the first of them. <c>BarrelRecipe.TryCraftNow</c> (vssurvivalmod)
+/// builds its result as <c>Output.ResolvedItemStack.Clone()</c> and then calls <c>CarryOverFreshness</c>; nothing else
+/// from the input survives, so a raw specimen sealed with borax would forget which animal it was. Barrel recipes have
+/// no <c>copyAttributesFrom</c>, so this captures the specimen's tree before the craft and puts it back on the output
+/// after.
 ///
-/// <c>BarrelRecipe.TryCraftNow</c> (vssurvivalmod, Systems/Recipe/Barrel/BarrelRecipe.cs) builds
-/// its result as <c>Output.ResolvedItemStack.Clone()</c> and then calls <c>CarryOverFreshness</c>;
-/// nothing else from the input survives. A raw specimen sealed with borax would therefore come
-/// out as a preserved specimen that has forgotten which animal it was. There is no hook for it
-/// - no <c>copyAttributesFrom</c> on barrel recipes - so this captures the pelt's tree before
-/// the craft and puts it back on the output after.
-///
-/// It is a no-op unless the recipe's output is in our domain, so it cannot touch
-/// anyone else's barrel. Applied once per process: singleplayer runs Start() for both sides
-/// in one process, and patching twice would run the prefix and postfix twice.
+/// A no-op unless the recipe's output is ours. Applied once per process: single player runs Start() for both sides in
+/// one process, and patching twice would run the prefix and postfix twice.
 /// </summary>
 public static class BarrelPatch
 {
@@ -33,7 +29,7 @@ public static class BarrelPatch
     {
         if (harmony != null) return;
         harmony = new Harmony(HarmonyId);
-        HeadPeltBoxes.Patch(harmony, api);   // auto boxes test: outlines of heads and pelts in vanilla blocks
+        HeadPeltBoxes.Patch(harmony, api);   // outlines of heads and pelts in vanilla blocks
 
         // A mount recipe takes only a pelt in the head's own coat (TaxidermyModSystem.CoatsMatchInGrid).
         var matches = AccessTools.Method(typeof(GridRecipe), nameof(GridRecipe.Matches), [typeof(IPlayer), typeof(IWorldAccessor), typeof(ItemSlot[]), typeof(int)]);
@@ -50,22 +46,20 @@ public static class BarrelPatch
             prefix: new HarmonyMethod(typeof(BarrelPatch), nameof(Before)),
             postfix: new HarmonyMethod(typeof(BarrelPatch), nameof(After)));
 
-        // The second and last patch: sneak + right-click with an empty hand on an antler mount
-        // that holds one of our heads opens the Adjust window instead of taking the head down.
-        // Vanilla's BlockAntlerMount.OnBlockInteractStart has no hook for that; everything
-        // else about the mount stays vanilla's. No-op unless the mount holds our head.
-        // Harvest: an animal with its own pelt design gives ITS raw hide, not vanilla's generic one
-        // (Calm, 2026-09-24). A postfix on the harvest itself, so vanilla's files stay untouched.
+        // Harvest: an animal with its own pelt design gives its raw hide, not vanilla's generic one. A postfix on the
+        // harvest itself, so vanilla's files stay untouched.
         var drops = AccessTools.Method(typeof(EntityBehaviorHarvestable), nameof(EntityBehaviorHarvestable.GenerateDrops));
         if (drops != null) harmony.Patch(drops, postfix: new HarmonyMethod(typeof(BarrelPatch), nameof(SwapHide)));
         else api.Logger.Error("[Taxidermy] EntityBehaviorHarvestable.GenerateDrops not found - animals will drop vanilla hides");
 
-        // No head or hide from vanilla's rip harvest (a blade hit on a drifter, shiver or bowtorn):
-        // a flag around it that EntityBehaviorTaxidermy reads. Finalizer, so it is always cleared.
+        // No head or hide from vanilla's rip harvest (a blade hit on a drifter, shiver or bowtorn): a flag around it
+        // that EntityBehaviorTaxidermy reads. Finalizer, so it is always cleared.
         var rip = AccessTools.Method(typeof(EntityBehaviorRipHarvestable), nameof(EntityBehaviorRipHarvestable.OnEntityReceiveDamage));
         if (rip != null) harmony.Patch(rip, prefix: new HarmonyMethod(typeof(BarrelPatch), nameof(RipStart)), finalizer: new HarmonyMethod(typeof(BarrelPatch), nameof(RipEnd)));
         else api.Logger.Error("[Taxidermy] EntityBehaviorRipHarvestable.OnEntityReceiveDamage not found - a blade hit may drop a head");
 
+        // Sneak + right-click with an empty hand on an antler mount holding one of our heads opens the Adjust window
+        // instead of taking the head down. Vanilla has no hook for that. A no-op unless the mount holds our head.
         var interact = AccessTools.Method(typeof(BlockAntlerMount), nameof(BlockAntlerMount.OnBlockInteractStart));
         if (interact != null) harmony.Patch(interact, prefix: new HarmonyMethod(typeof(BarrelPatch), nameof(AntlerMountInteract)));
         else api.Logger.Error("[Taxidermy] BlockAntlerMount.OnBlockInteractStart not found - heads on antler mounts cannot be adjusted");
@@ -88,8 +82,8 @@ public static class BarrelPatch
         if (world.BlockAccessor.GetBlockEntity(blockSel.Position) is not BlockEntityAntlerMount mount) return true;
         var stack = mount.Inventory[0]?.Itemstack;
         if (stack?.Collectible is not ItemHead || Specimen.Of(stack) == null) return true;
-        // The server decides and tells the client to open the window (claims, 2026-09-23). Both
-        // sides still swallow the click, so vanilla never takes the head down on a sneak-click.
+        // The server decides and tells the client to open the window. Both sides swallow the click, so vanilla never
+        // takes the head down on a sneak-click.
         if (world.Side == EnumAppSide.Server)
             world.Api.ModLoader.GetModSystem<TaxidermyModSystem>().RequestAdjust(byPlayer, blockSel.Position, true);
         __result = true;
@@ -103,21 +97,19 @@ public static class BarrelPatch
     }
 
     /// <summary>
-    /// After vanilla fills the carcass's harvest inventory: the HEAD (EntityBehaviorTaxidermy.
-    /// MakeHead - here, not inside GenerateDrops, so a falx rip harvest cannot use it up), then the
-    /// hide rules (Calm, 2026-09-26):
+    /// After vanilla fills the carcass's harvest inventory: the head (EntityBehaviorTaxidermy.MakeHead, here rather
+    /// than inside GenerateDrops so a rip harvest cannot use it up), then the hide rules:
     /// <list type="number">
-    /// <item>How many: OnePeltPerAnimal on - EXACTLY ONE hide, the extras taken away and one added
-    /// when there is none (the hideless drifters and chickens, a carcass Butchering left bare). Off -
-    /// the game's own count, with one added under AlwaysHeadAndHide when there is none - or, with
-    /// both off, for a creature with no hide in the game at all, on a half chance (1.0.2).</item>
-    /// <item>Which: with CustomPelts on and a pelt design, every plain raw hide (game:hide-raw-
-    /// small..huge) becomes the animal's own raw pelt - same size, same count - carrying the animal
-    /// and its coat. So pelts drop at exactly the game's rates.</item>
+    /// <item>How many: OnePeltPerAnimal on gives exactly one hide, the extras taken away and one added when there is
+    /// none. Off gives the game's own count, with one added under AlwaysHeadAndHide when there is none, or with both
+    /// off, on a half chance for a creature with no hide in the game at all.</item>
+    /// <item>Which: under the own-pelt switch and with a pelt design, every plain raw hide (game:hide-raw-small..huge)
+    /// becomes the animal's own raw pelt, same size and count, carrying the animal and its coat. So pelts drop at the
+    /// game's rates.</item>
     /// </list>
-    /// Then the inventory is saved back the way GenerateDrops saves it (WatchedAttributes
-    /// "harvestableInv") so the client sees it. Once per carcass: this postfix runs on every
-    /// GenerateDrops call, and without the mark a hide already taken would be added again.
+    /// Then the inventory is saved back the way GenerateDrops saves it (WatchedAttributes "harvestableInv") so the
+    /// client sees it. Once per carcass: this runs on every GenerateDrops call, and without the mark a hide already
+    /// taken would be added again.
     /// </summary>
     public static void SwapHide(EntityBehaviorHarvestable __instance, IPlayer byPlayer)
     {
@@ -137,14 +129,14 @@ public static class BarrelPatch
             && EntityBehaviorTaxidermy.MakeHead(entity, system, def, TaxidermyModSystem.HarvestMultiplier(entity, byPlayer)) is { } head)
             changed |= AddToHarvest(inv, head);
 
-        // The antlers stay on the head (1.0.3): vanilla's antler growth put them in this harvest
-        // (IHarvestableDrops); with a head here they are taken out and noted on it, for skinning.
+        // The antlers stay on the head: vanilla's antler growth put them in this harvest (IHarvestableDrops), and with
+        // a head here they are taken out and noted on it, for skinning.
         if (config.AntlersOnHead && inv.FirstOrDefault(s => s.Itemstack?.Collectible is ItemHead)?.Itemstack is { } headStack)
             changed |= KeepAntlersOnHead(inv, headStack);
 
-        // Which hides this creature may be given (1.0.3): its own pelt under its category's switch,
-        // the game's plain hide always for animals and only with MobVanillaHides for mobs. Hides
-        // the creature drops of its own accord are never taken - only what this mod adds or turns.
+        // Which hides this creature may be given: its own pelt under its category's switch, and the game's plain hide
+        // always for animals but only with MobVanillaHides for mobs. Hides the creature drops of its own accord are
+        // never taken, only what this mod adds or turns.
         bool ownPelt = config.OwnPeltsFor(def) && !string.IsNullOrEmpty(def.PeltShape);
         bool mayAdd = ownPelt || !def.IsMob || config.MobVanillaHides;
 
@@ -163,7 +155,7 @@ public static class BarrelPatch
             changed |= AddPlainHide(entity, def, inv);
         else if (hides == 0 && mayAdd && system.IsHideless(entity.Code.ToString())
             && entity.World.Rand.NextDouble() < (def.ChanceFor(entity.Code.ToString()) ?? TaxidermyConfig.HidelessHideChance) * TaxidermyModSystem.HarvestMultiplier(entity, byPlayer))
-            changed |= AddPlainHide(entity, def, inv);   // both switches off: the mobs and chickens on a chance (1.0.2)
+            changed |= AddPlainHide(entity, def, inv);   // both switches off: the mobs and chickens on a chance
 
         if (ownPelt)
         {
@@ -185,9 +177,9 @@ public static class BarrelPatch
     }
 
     /// <summary>
-    /// Each item the head wears (its <c>attachments</c>) that is also in the harvest is taken out -
-    /// one of each - and its code noted on the head (<see cref="Specimen.AntlersKey"/>). Only what
-    /// was actually handed over is noted, so skinning can never make antlers the carcass did not give.
+    /// Each item the head wears (its <c>attachments</c>) that is also in the harvest is taken out - one of each - and
+    /// its code noted on the head (<see cref="Specimen.AntlersKey"/>). Only what was actually handed over is noted, so
+    /// skinning can never make antlers the carcass did not give.
     /// </summary>
     private static bool KeepAntlersOnHead(InventoryBase inv, ItemStack headStack)
     {
@@ -210,8 +202,8 @@ public static class BarrelPatch
         slot.Itemstack?.Collectible?.Code?.Path is { } path && (path.StartsWith("hide-") || path.StartsWith("pelt-"));
 
     /// <summary>
-    /// A plain raw hide of the animal's size into a free slot (the inventory grows if it must, as
-    /// vanilla's does) - turned into the animal's own pelt by the step after, where it has one.
+    /// A plain raw hide of the animal's size into a free slot (the inventory grows if it must, as vanilla's does) -
+    /// turned into the animal's own pelt by the step after, where it has one.
     /// </summary>
     private static bool AddPlainHide(Entity entity, AnimalDefinition def, InventoryBase inv) =>
         entity.World.GetItem(new AssetLocation("game:hide-raw-" + def.SizeFor(entity.Code.ToString()))) is { } plain
@@ -242,9 +234,7 @@ public static class BarrelPatch
     public static void Before(BarrelRecipe __instance, ItemSlot[] inputSlots, out ITreeAttribute __state)
     {
         __state = null;
-        // Only our own outputs (a pelt + borax -> skin). A pelt soaked in lime becomes a plain
-        // vanilla hide and is supposed to forget.
-        // Also the game:hide-*-taxidermy-* family (salted -> soaked in lime or borax), 2026-09-24.
+        // Only our own outputs. A pelt soaked in lime becomes a plain vanilla hide and is supposed to forget.
         var outCollectible = __instance.Output?.ResolvedItemStack?.Collectible;
         if (outCollectible?.Code?.Domain != Specimen.Domain && outCollectible is not ItemTaxidermyHide) return;
         foreach (var slot in inputSlots)

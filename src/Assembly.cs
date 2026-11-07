@@ -11,15 +11,12 @@ using Vintagestory.GameContent;
 namespace Taxidermy;
 
 /// <summary>
-/// Building a mount in the world (Calm's design, 2026-10-01; 1.0.4), beside the grid recipe:
-/// a preserved head on the ground, right-clicked with its pelt, becomes an unfinished mount
-/// (<see cref="BEAssembly"/>); dry grass is added by hand; sewing it with the Needle and Thread
-/// makes the finished mount in one go (Calm, 2026-10-01: with everything together it needs no
-/// stages). Until it is sewn, breaking it gives every part back.
+/// Building a mount in the world, beside the grid recipe: a preserved head on the ground, right-clicked with its pelt,
+/// becomes an unfinished mount (<see cref="BEAssembly"/>). Dry grass is added by hand, and sewing it with a needle
+/// makes the finished mount. Until it is sewn, breaking it gives every part back.
 ///
-/// Which pelt fits which head, and how much grass, come from the mount GRID RECIPES themselves
-/// (<see cref="AssemblyRecipes"/>), so this mod's recipes, Taxidermy Patches and any modder's
-/// recipe patch all work here unchanged.
+/// Which pelt fits which head, and how much grass, come from the mount grid recipes (<see cref="AssemblyRecipes"/>), so
+/// this mod's recipes, Taxidermy Patches and any modder's recipe patch all work here unchanged.
 /// </summary>
 public static class AssemblyRecipes
 {
@@ -38,8 +35,8 @@ public static class AssemblyRecipes
         ing != null && !IsHeadIngredient(ing) && !IsGrassIngredient(ing) && !IsToolIngredient(ing) && !IsThreadIngredient(world, ing);
 
     /// <summary>
-    /// The thread a kept needle sews with (BlockAssembly.KeptNeedle) - the mount recipes for those take the twine as well,
-    /// and that must not be read as the pelt. Worked out once per world from every needle.
+    /// The thread a kept needle sews with (BlockAssembly.KeptNeedle) - the mount recipes for those take the twine as
+    /// well, and that must not be read as the pelt. Worked out once per world from every needle.
     /// </summary>
     private static bool IsThreadIngredient(IWorldAccessor world, CraftingRecipeIngredient ing)
     {
@@ -81,9 +78,8 @@ public static class AssemblyRecipes
 
 /// <summary>
 /// On the preserved head: ground storage asks a stored item first whether it wants the click
-/// (BEGroundStorage.OnPlayerInteractStart, before it tries to add the held item to the pile), so
-/// right-clicking a head on the ground with its pelt starts the assembly instead of stacking the
-/// pelt beside it.
+/// (BEGroundStorage.OnPlayerInteractStart, before it tries to add the held item to the pile), so right-clicking a head
+/// on the ground with its pelt starts the assembly instead of stacking the pelt beside it.
 /// </summary>
 public sealed class BehaviorAssemblyStart : CollectibleBehavior, IContainedInteractable
 {
@@ -142,13 +138,15 @@ public sealed class BehaviorAssemblyStart : CollectibleBehavior, IContainedInter
     public void OnContainedInteractStop(float secondsUsed, BlockEntityContainer be, ItemSlot slot, IPlayer byPlayer, BlockSelection blockSel) { }
 }
 
-/// <summary>The unfinished mount's block: grass by hand, one sewing with the needle, everything back when broken.</summary>
+/// <summary>
+/// The unfinished mount's block: grass by hand, one sewing with the needle, everything back when broken.
+/// </summary>
 public sealed class BlockAssembly : Block
 {
     public const float SewSeconds = 2.5f;
-    /// <summary>The game's knife-cutting animation, as on the needle carving (Calm, 2026-10-01).</summary>
+    /// <summary>The game's knife-cutting animation, as on the needle carving.</summary>
     private const string SewAnim = "knifecut";
-    /// <summary>A stitch sound every half second while sewing (Calm, 2026-10-01).</summary>
+    /// <summary>A stitch sound every half second while sewing.</summary>
     private const float StitchEvery = 0.5f;
     private static readonly AssetLocation StitchSound = new("game:sounds/player/clothrepair");
 
@@ -161,19 +159,15 @@ public sealed class BlockAssembly : Block
 
     private static bool IsNeedle(ItemSlot slot) => slot?.Itemstack?.Collectible is ItemNeedleThread || KeptNeedle(slot?.Itemstack?.Collectible) != null;
 
-    // ── Needles that are kept, sewing with thread taken from the player (2026-10-24) ──
-    // First for Tailor's Delight (a player asked; Calm: "they have to use [its] twine"), then our own bare bone needle too
-    // (Calm: "try it the way that we have done with Tailor's Delight needle"). Any item whose JSON has
+    // Needles that are kept, sewing with thread taken from the player's hotbar or backpack. Any item whose JSON has
     //     "attributes": { "taxidermyNeedle": { "thread": "tailorsdelight:twine-*", "threadMultiplier": 1 } }
-    // ("thread" may be a list - any of them will do, mixed if need be; "threadExcept" lists codes that never count, as
-    // Tailor's Delight's gilded and silvered thread: Calm, "it may use that automatically when it shouldn't")
-    // sews here: the needle is kept and the thread is taken from the hotbar or backpack - by the animal's size, half the
-    // stitches the old needle used (1 small, 2 medium, 3 large, 4 huge; Calm: "the same system of how many it needs ...
-    // depending on size", then "might need to half it"), times threadMultiplier (default 1). No "thread": nothing is taken. Tailor's Delight's gets the attribute from
-    // assets/taxidermy/patches/compat-tailorsdelight.json (dependsOn); our bare needle, without one, sews with flax twine or
-    // Tailor's Delight's twine (Calm, 2026-10-24: the taxidermy needle "can't use the tailor's delight thread") - the
-    // second simply matches nothing when that mod is not installed.
-    // The old threaded Needle and Thread still sews on its durability, so the ones already in worlds are used up as before.
+    // sews here. "thread" may be a list, mixed if need be, and "threadExcept" lists codes that never count. One mount
+    // takes half its stitches (1 small, 2 medium, 3 large, 4 huge) times threadMultiplier. With no "thread", nothing is
+    // taken.
+    //
+    // Tailor's Delight's needle gets the attribute from patches/compat-tailorsdelight.json, and our bare needle, which
+    // has none, uses BareNeedle below. The old threaded Needle and Thread still sews on its durability, so those
+    // already in worlds get used up.
 
     public const string NeedleAttribute = "taxidermyNeedle";
 
@@ -185,13 +179,20 @@ public sealed class BlockAssembly : Block
             Threads.Any(t => WildcardUtil.Match(t, code)) && !Except.Any(e => WildcardUtil.Match(e, code));
     }
 
-    /// <summary>Tailor's Delight's gilded and silvered thread - made with gold and silver, never used up on a mount.</summary>
+    /// <summary>
+    /// Tailor's Delight's gilded and silvered thread - made with gold and silver, never used up on a mount.
+    /// </summary>
     private static readonly AssetLocation[] PreciousThread = [new("tailorsdelight:twine-gold"), new("tailorsdelight:twine-silver")];
 
-    /// <summary>Our bare bone needle, when its JSON says nothing else: flax twine or Tailor's Delight's twine and thread, by size (ThreadFor).</summary>
+    /// <summary>
+    /// Our bare bone needle, when its JSON says nothing else: flax twine or Tailor's Delight's twine and thread, by
+    /// size (ThreadFor).
+    /// </summary>
     private static readonly NeedleUse BareNeedle = new([new AssetLocation("game:flaxtwine"), new AssetLocation("tailorsdelight:twine-*")], PreciousThread, 1);
 
-    /// <summary>A needle that is kept and sews with separate thread, or null (not a needle, or the threaded one).</summary>
+    /// <summary>
+    /// A needle that is kept and sews with separate thread, or null (not a needle, or the threaded one).
+    /// </summary>
     internal static NeedleUse KeptNeedle(CollectibleObject collectible)
     {
         if (collectible == null || collectible is ItemNeedleThread) return null;
@@ -221,7 +222,9 @@ public sealed class BlockAssembly : Block
         !use.NeedsThread || player?.WorldData?.CurrentGameMode == EnumGameMode.Creative
         || ThreadSlots(player, use).Sum(s => s.StackSize) >= amount;
 
-    /// <summary>How much thread one mount takes: half its stitches, by the animal's size - 1 small, 2 medium, 3 large, 4 huge.</summary>
+    /// <summary>
+    /// How much thread one mount takes: half its stitches, by the animal's size - 1 small, 2 medium, 3 large, 4 huge.
+    /// </summary>
     private static int ThreadFor(BEAssembly be, NeedleUse use) => Math.Max(1, be.Stitches / 2) * use.Multiplier;
 
     /// <summary>Server: takes the thread. False (and nothing taken) when there is not enough.</summary>
@@ -281,9 +284,9 @@ public sealed class BlockAssembly : Block
                 Stitch(world, byPlayer, blockSel);
                 if (world.Api is ICoreClientAPI client)
                 {
-                    // Sewing turns this block into a mount, so the game's Stop may never reach it
-                    // (the needle carving lost its Stop the same way): stop the animation here too,
-                    // once the pile is gone or the time is well past.
+                    // Sewing turns this block into a mount, so the game's Stop may never reach it (the needle carving
+                    // lost its Stop the same way): stop the animation here too, once the pile is gone or the time is
+                    // well past.
                     var pos = blockSel.Position.Copy();
                     long since = client.World.ElapsedMilliseconds, id = 0;
                     id = client.Event.RegisterGameTickListener(_ =>
@@ -369,7 +372,8 @@ public sealed class BlockAssembly : Block
         if (be?.HeadStack == null) return base.GetPlacedBlockInfo(world, pos, forPlayer);
         var sb = new StringBuilder();
         sb.AppendLine(Lang.Get("taxidermy:assembly-grass", be.Grass, be.GrassNeeded));
-        // the twine a bone needle takes (half the old stitches); the generic message, as any kept needle's twine will do
+        // the twine a bone needle takes (half the old stitches); the generic message, as any kept needle's twine will
+        // do
         sb.AppendLine(be.ReadyToSew ? Lang.Get("taxidermy:assembly-next-sew", Math.Max(1, be.Stitches / 2)) : Lang.Get("taxidermy:assembly-next-grass"));
         sb.AppendLine(Lang.Get("taxidermy:assembly-break"));
         return sb.ToString();
@@ -391,9 +395,9 @@ public sealed class BlockAssembly : Block
 }
 
 /// <summary>
-/// The unfinished mount: the head (which animal, which coat), the pelt and the grass so far, lying
-/// together as a crafting pile. Sewing it turns the block into an ordinary mount (BlockMount /
-/// BEMount) carrying the head's data - from there it is exactly a grid-crafted mount.
+/// The unfinished mount: the head (which animal, which coat), the pelt and the grass so far, lying together as a
+/// crafting pile. Sewing it turns the block into an ordinary mount (BlockMount / BEMount) carrying the head's data -
+/// from there it is exactly a grid-crafted mount.
 /// </summary>
 public sealed class BEAssembly : BlockEntity
 {
@@ -406,8 +410,7 @@ public sealed class BEAssembly : BlockEntity
     public float Rotation { get; private set; }
 
     /// <summary>
-    /// Thread the sewing takes: the same as the grass - 2 small, 4 medium, 6 large, 8 huge (Calm's
-    /// 1 + 1 per size step, the body and the head now sewn in one go) and the same as the grid recipe.
+    /// Thread the sewing takes: the same as the grass (2 small, 4 medium, 6 large, 8 huge) and the grid recipe.
     /// </summary>
     public int Stitches => Math.Max(1, GrassNeeded);
     public bool ReadyToSew => HeadStack != null && Grass >= GrassNeeded;
@@ -500,11 +503,10 @@ public sealed class BEAssembly : BlockEntity
     // ------------------------------------------------------------------ drawing
 
     /// <summary>
-    /// Main thread only (atlas work). Laid out in the animal's rest frame - its front towards -X,
-    /// like the mounts - then turned by <see cref="Rotation"/>, which points that front at the
-    /// player. Seen from where the player stood: the pelt flat in the middle at its real size, the
-    /// head on the LEFT (-Z, the animal's right) nose towards the player, the grass on the RIGHT
-    /// (+Z) - Calm, 2026-10-01.
+    /// Main thread only (atlas work). Laid out in the animal's rest frame, its front towards -X like the mounts, then
+    /// turned by <see cref="Rotation"/>, which points that front at the player. Seen from there: the pelt flat in the
+    /// middle at its real size, the head on the left (-Z) with its nose towards the player, the grass on the right
+    /// (+Z).
     /// </summary>
     private void Rebuild()
     {
@@ -520,8 +522,8 @@ public sealed class BEAssembly : BlockEntity
             if (pelt != null) list.Add(pelt);
             if (MountMesher.GetHeadMesh(capi, data, def, true)?.Clone() is { } head)
             {
-                // As a head lies on the ground (its neck sinking in, MountMesher.BuildHead flat),
-                // raised only by the pelt's thickness (Calm, 2026-10-01).
+                // As a head lies on the ground (its neck sinking in, MountMesher.BuildHead flat), raised only by the
+                // pelt's thickness.
                 head.Translate(0, PeltThickness(pelt), -0.26f);
                 list.Add(head);
             }
@@ -535,7 +537,9 @@ public sealed class BEAssembly : BlockEntity
         meshes = list;
     }
 
-    /// <summary>How thick the pelt lies - its top, capped so a fluffy or odd pelt model cannot lift the head far.</summary>
+    /// <summary>
+    /// How thick the pelt lies - its top, capped so a fluffy or odd pelt model cannot lift the head far.
+    /// </summary>
     private static float PeltThickness(MeshData pelt)
     {
         if (pelt == null || pelt.VerticesCount == 0) return 0;
@@ -553,7 +557,9 @@ public sealed class BEAssembly : BlockEntity
         m.Translate(0, y - min, 0);
     }
 
-    /// <summary>The pelt laid flat at its real size: our own pelts draw themselves; any other pelt uses its item model.</summary>
+    /// <summary>
+    /// The pelt laid flat at its real size: our own pelts draw themselves; any other pelt uses its item model.
+    /// </summary>
     private MeshData PeltMesh(ICoreClientAPI capi)
     {
         if (PeltStack == null) return null;
@@ -565,8 +571,8 @@ public sealed class BEAssembly : BlockEntity
     }
 
     /// <summary>
-    /// Dry grass bundles heaped on the right of the pile - one per bundle added, in fixed spots so
-    /// they never jump about; a second layer on top once the first is full.
+    /// Dry grass bundles heaped on the right of the pile - one per bundle added, in fixed spots so they never jump
+    /// about; a second layer on top once the first is full.
     /// </summary>
     private IEnumerable<MeshData> GrassMeshes(ICoreClientAPI capi)
     {
@@ -592,8 +598,8 @@ public sealed class BEAssembly : BlockEntity
     }
 
     /// <summary>
-    /// An item's own model with its textures put in the BLOCK atlas, so it can go into the chunk
-    /// mesh like a placed block. The shape's own texture list first, then the item's overrides.
+    /// An item's own model with its textures put in the BLOCK atlas, so it can go into the chunk mesh like a placed
+    /// block. The shape's own texture list first, then the item's overrides.
     /// </summary>
     private static MeshData ItemMesh(ICoreClientAPI capi, Item item)
     {

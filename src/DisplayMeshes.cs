@@ -8,30 +8,21 @@ using Vintagestory.GameContent;
 namespace Taxidermy;
 
 /// <summary>
-/// A display block (ground storage, vanilla's antler mount) asks our heads and hides for their mesh
-/// on the TESSELATION thread. Ours are built on the main thread (atlas inserts), so the first ask
-/// after a load gets null, and the display caches vanilla's default mesh for the item instead.
+/// A display block (ground storage, vanilla's antler mount) asks our heads and hides for their mesh on the tesselation
+/// thread. Ours are built on the main thread (atlas inserts), so the first ask after a load gets null, and the display
+/// caches vanilla's default mesh for the item instead.
 ///
-/// Vanilla keeps one cache per block-entity class, <c>"meshesDisplay-" + ClassCode</c>, and asks
-/// the item's GetMeshCacheKey on EVERY lookup (vssurvivalmod BEContainerDisplay.getOrCreateMesh).
-/// So while our mesh is unbuilt the key ends in <see cref="Wait"/>: the default mesh is cached
-/// under that key, and once ours exists the key changes, the lookup misses and the display asks
-/// GenMesh again. Nothing of vanilla's is ever removed.
+/// Vanilla keeps one cache per block-entity class and asks the item's GetMeshCacheKey on every lookup (vssurvivalmod
+/// BEContainerDisplay.getOrCreateMesh). So while our mesh is unbuilt the key ends in <see cref="Wait"/>: the default
+/// mesh is cached under that key, and once ours exists the key changes, the lookup misses and the display asks GenMesh
+/// again. Nothing of vanilla's is removed, because evicting from its dictionaries on the main thread while the
+/// tesselation thread adds to them crashes the client ("Collection was modified").
 ///
-/// Until 2026-10-03 this class evicted our key from vanilla's dictionaries instead - from the main
-/// thread while the tesselation thread was adding to them, which crashed a client joining a world
-/// full of heads ("Collection was modified", Calm, 2026-10-03).
+/// Known gap: a head that finishes between vanilla's two key lookups in one getOrCreateMesh gets the default mesh under
+/// its real key until the next relog, never a crash. A "say wait once more" marker could leave a display that asks only
+/// once stuck on the stand-in, which is worse. The real fix would be every head's textures in the atlas at load.
 ///
-/// Left open: a head that finishes between vanilla's two key lookups in one getOrCreateMesh gets
-/// the default mesh under its real key - the default mesh until the next relog, never a crash.
-/// Looked at again 2026-10-10 (review): a "say wait once more" marker would cover vanilla's displays but
-/// can leave a display that asks the key only once (Universal Display) on the stand-in for good - worse
-/// than this. The real fix is every head's textures in the atlas at load, so a head can be built on any
-/// thread at once; not done for 1.0.4.
-///
-/// ONE QUEUED BUILD PER MODEL (2026-10-10, review): heads, pelts and skinned heads used to queue a build
-/// and a redraw per ask. <see cref="Queue"/> keeps one build per model key and redraws every display that
-/// asked meanwhile, once it is done.
+/// <see cref="Queue"/> keeps one build per model key and redraws every display that asked meanwhile.
 /// </summary>
 internal static class DisplayMeshes
 {

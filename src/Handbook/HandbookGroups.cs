@@ -43,6 +43,8 @@ namespace Taxidermy.Handbook
             public System.Func<ItemStack, string> Key;
             public System.Func<ItemStack, string> Title;
             public ItemStack[] ExtraStacks;
+            /// <summary>Several blocks or items on one page: rules with the same Shared name group their stacks together.</summary>
+            public string Shared;
         }
 
         private static readonly ConditionalWeakTable<CollectibleObject, Rule> rules = new();
@@ -51,23 +53,24 @@ namespace Taxidermy.Handbook
         private static readonly object gate = new();
         private static Harmony harmony;
         /// <summary>
-        /// The mod ids whose blocks and items may carry a JSON <c>handbookGroup</c> (Apply's jsonDomain). Replaced whole under
-        /// <c>gate</c> and read under it too - not <c>volatile</c>: Attribute Rendering Library's code scanner cannot read a
-        /// volatile field and logged an error for every mod carrying this file (Calm's log, 2026-10-15).
+        /// The mod ids whose blocks and items may carry a JSON <c>handbookGroup</c> (Apply's jsonDomain). Replaced
+        /// whole under <c>gate</c> and read under it too, and not <c>volatile</c>: Attribute Rendering Library's code
+        /// scanner cannot read a volatile field and logs an error for every mod carrying this file.
         /// </summary>
         private static string[] jsonDomains = Array.Empty<string>();
 
         /// <summary>
-        /// Group this block's or item's handbook pages. <paramref name="groupKey"/>: stacks with the same answer share a page
-        /// (null = one page for all of them). <paramref name="title"/>: the page's name from its first stack (null = the
-        /// block's or item's own name). <paramref name="extraStacks"/>: stacks that get handbook pages (joining their groups)
-        /// WITHOUT being in the creative tab - every metal on a figurine's page while creative shows a few (Codex for Calm,
-        /// 2026-10-15).
+        /// Group this block's or item's handbook pages. <paramref name="groupKey"/>: stacks with the same answer share
+        /// a page (null = one page for all of them). <paramref name="title"/>: the page's name from its first stack
+        /// (null = the block's or item's own name). <paramref name="extraStacks"/>: stacks that get handbook pages
+        /// (joining their groups) without being in the creative tab, such as every metal on a figurine's page while
+        /// creative shows a few. <paramref name="shared"/>: a name several blocks or items register with to share
+        /// pages, such as a hide's four sizes on one page per stage; null = this one alone.
         /// </summary>
         public static void Register(CollectibleObject collectible, System.Func<ItemStack, string> groupKey = null, System.Func<ItemStack, string> title = null,
-            IEnumerable<ItemStack> extraStacks = null)
+            IEnumerable<ItemStack> extraStacks = null, string shared = null)
         {
-            if (collectible != null) rules.AddOrUpdate(collectible, new Rule { Key = groupKey, Title = title, ExtraStacks = extraStacks?.ToArray() });
+            if (collectible != null) rules.AddOrUpdate(collectible, new Rule { Key = groupKey, Title = title, ExtraStacks = extraStacks?.ToArray(), Shared = shared });
         }
 
         /// <summary>
@@ -124,8 +127,8 @@ namespace Taxidermy.Handbook
         }
 
         /// <summary>
-        /// The same, worked out for the page's own stack - so one item's pages can differ: a collector figurine's page leaves
-        /// out the metals it could be cast in (Calm, 2026-10-16). On a grouped page it is the stack the page opened on.
+        /// The same, worked out for the page's own stack, so one item's pages can differ: a collector figurine's page
+        /// leaves out the metals it could be cast in. On a grouped page it is the stack the page opened on.
         /// </summary>
         public static void AddSection(CollectibleObject collectible, string title, System.Func<ICoreClientAPI, ItemStack, string> text)
         {
@@ -332,12 +335,12 @@ namespace Taxidermy.Handbook
                 }
             }
             __result.AddRange(extras);
-            var buckets = new Dictionary<(CollectibleObject, string), (HandbookGroups.Rule rule, List<GuiHandbookItemStackPage> pages)>();
+            var buckets = new Dictionary<(object, string), (HandbookGroups.Rule rule, List<GuiHandbookItemStackPage> pages)>();
             foreach (var page in __result.OfType<GuiHandbookItemStackPage>())
             {
                 var rule = HandbookGroups.RuleFor(page.Stack);
                 if (rule == null) continue;
-                var key = (page.Stack.Collectible, HandbookGroups.KeyOf(page.Stack, rule));
+                var key = (rule.Shared ?? (object)page.Stack.Collectible, HandbookGroups.KeyOf(page.Stack, rule));
                 if (!buckets.TryGetValue(key, out var bucket)) buckets[key] = bucket = (rule, new List<GuiHandbookItemStackPage>());
                 bucket.pages.Add(page);
             }

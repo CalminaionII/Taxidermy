@@ -13,22 +13,25 @@ using Vintagestory.GameContent;
 namespace Taxidermy;
 
 /// <summary>
-/// One hide family for every animal with a pelt design: <c>game:hide-&lt;state&gt;-taxidermy-&lt;size&gt;</c>
-/// - raw, oiled, pelt, soaked, salted in small..huge, 20 codes in all (Calm, 2026-09-24).
+/// One hide family for every animal with a pelt design: <c>game:hide-&lt;state&gt;-taxidermy-&lt;size&gt;</c>, raw,
+/// oiled, pelt, soaked and salted in small to huge, 20 codes in all.
 ///
-/// The STATE and SIZE are in the code because vanilla reads them there: its recipes take hides
-/// by <c>hide-pelt-*</c> / <c>hide-raw-*</c> plus a size tag, and build the next state's code from
-/// the old one (<c>hide-raw-X</c> -> <c>hide-oiled-X</c>). So these work in every vanilla recipe
-/// that takes a hide by size - clothes, lamellar, bellows, oiling, salting, the soaking barrel.
-/// WHICH ANIMAL, and its exact coat, rides on the stack as the same specimen tree a head carries,
-/// the way Rift Weapons keeps metal in the code only where another mod must see it.
+/// The state and size are in the code because vanilla reads them there: its recipes take hides by <c>hide-pelt-*</c> or
+/// <c>hide-raw-*</c> plus a size tag, and build the next state's code from the old one (<c>hide-raw-X</c> ->
+/// <c>hide-oiled-X</c>). So these work in every vanilla recipe that takes a hide by size. Which animal, and its exact
+/// coat, rides on the stack as the same specimen tree a head carries.
 ///
-/// The animal is kept through every step: curing (<see cref="OnTransitionNow"/>), vanilla's
-/// oiling and salting grid recipes (<see cref="OnCreatedByCrafting"/>, called on the OUTPUT, so
-/// vanilla's own hides are untouched) and the barrel (BarrelPatch).
+/// The animal is kept through every step: curing (<see cref="OnTransitionNow"/>), vanilla's oiling and salting grid
+/// recipes (<see cref="OnCreatedByCrafting"/>, called on the output, so vanilla's own hides are untouched) and the
+/// barrel (BarrelPatch).
 /// </summary>
-public sealed class ItemTaxidermyHide : Item, IContainedMeshSource
+public sealed class ItemTaxidermyHide : Item, IContainedMeshSource, IHandBookPageCodeProvider
 {
+    /// <summary>
+    /// H on any hide or pelt, or a link to one, opens its group page showing this animal (HandbookVariants).
+    /// </summary>
+    public string HandbookPageCodeForStack(IWorldAccessor world, ItemStack stack) => Handbook.HandbookVariants.PageCodeFor(world?.Api, stack);
+
     public const string Group = "taxidermy";
     private const string MeshCacheKey = "taxidermy-hide-meshes";
     private const string RefCacheKey = "taxidermy-hide-refs";
@@ -41,8 +44,8 @@ public sealed class ItemTaxidermyHide : Item, IContainedMeshSource
     // ---------------------------------------------------------------- names
 
     /// <summary>
-    /// Vanilla's own pattern for species hides, with the animal's own name from its lang file:
-    /// "Raw brown hare hide (small)", "Brown hare pelt (small)", "Oiled jackrabbit hide".
+    /// Vanilla's own pattern for species hides, with the animal's own name from its lang file: "Raw brown hare hide
+    /// (small)", "Brown hare pelt (small)", "Oiled jackrabbit hide".
     /// </summary>
     public override string GetHeldItemName(ItemStack itemStack)
     {
@@ -53,9 +56,9 @@ public sealed class ItemTaxidermyHide : Item, IContainedMeshSource
     }
 
     /// <summary>
-    /// "Brown hare (male)" -> "brown hare". Vanilla writes species hides in lower case mid-sentence
-    /// ("Raw arctic fox hide"); a name written wholly in title case by its mod (a proper name like
-    /// "African Forest Elephant") is left as it is.
+    /// "Brown hare (male)" -> "brown hare". Vanilla writes species hides in lower case mid-sentence ("Raw arctic fox
+    /// hide"); a name written wholly in title case by its mod (a proper name like "African Forest Elephant") is left as
+    /// it is.
     /// </summary>
     public static string AnimalLabel(ITreeAttribute data)
     {
@@ -68,8 +71,8 @@ public sealed class ItemTaxidermyHide : Item, IContainedMeshSource
     private static string Capitalise(string s) => s.Length == 0 ? s : char.ToUpperInvariant(s[0]) + s.Substring(1);
 
     /// <summary>
-    /// Sex and size under the name (Calm, 2026-09-29) - male and female hides stack apart but
-    /// share a name. No sex line for an animal without a gender variant, or whose mod is gone.
+    /// Sex and size under the name, because male and female hides stack apart but share a name. No sex line for an
+    /// animal without a gender variant, or whose mod is gone.
     /// </summary>
     public override void GetHeldItemInfo(ItemSlot inSlot, StringBuilder dsc, IWorldAccessor world, bool withDebugInfo)
     {
@@ -99,6 +102,9 @@ public sealed class ItemTaxidermyHide : Item, IContainedMeshSource
 
     // ---------------------------------------------------------------- keeping the animal
 
+    public override TransitionableProperties[] GetTransitionableProperties(IWorldAccessor world, ItemStack itemstack, Entity forEntity) =>
+        Handbook.HandbookVariants.ExactTransitions(world.Api, itemstack, base.GetTransitionableProperties(world, itemstack, forEntity));
+
     public override ItemStack OnTransitionNow(ItemSlot slot, TransitionableProperties props)
     {
         var result = base.OnTransitionNow(slot, props);
@@ -107,10 +113,10 @@ public sealed class ItemTaxidermyHide : Item, IContainedMeshSource
     }
 
     /// <summary>
-    /// Vanilla calls this on the OUTPUT's collectible after a grid craft, so it runs for vanilla's
-    /// raw -> oiled and raw -> salted recipes when they make one of ours, and never for vanilla's own
-    /// hides. Only the animal is copied - not the spoil timer, which a blanket copyAttributesFrom on
-    /// vanilla's recipes would have dragged along for every hide in the game.
+    /// Vanilla calls this on the OUTPUT's collectible after a grid craft, so it runs for vanilla's raw -> oiled and raw
+    /// -> salted recipes when they make one of ours, and never for vanilla's own hides. Only the animal is copied - not
+    /// the spoil timer, which a blanket copyAttributesFrom on vanilla's recipes would have dragged along for every hide
+    /// in the game.
     /// </summary>
     public override void OnCreatedByCrafting(ItemSlot[] allInputslots, ItemSlot outputSlot, IRecipeBase byRecipe)
     {
@@ -123,11 +129,9 @@ public sealed class ItemTaxidermyHide : Item, IContainedMeshSource
     // ---------------------------------------------------------------- stacking
 
     /// <summary>
-    /// Two hides stack when they are the same animal, same gender, in the same coat (Calm,
-    /// 2026-09-29: male and female stay separate). The specimen tree is the head's, and carries
-    /// what only a head needs - antlers, pose - so two stags' hides would never stack on the tree
-    /// alone. Compared here by <see cref="StackKey"/> instead; everything outside the tree as
-    /// vanilla does. Hides made before this stack too, since nothing on them is rewritten.
+    /// Two hides stack when they are the same animal, gender and coat. The specimen tree is the head's and carries what
+    /// only a head needs (antlers, pose), so they are compared by <see cref="StackKey"/> instead, with everything
+    /// outside the tree as vanilla does.
     /// </summary>
     public override bool Equals(ItemStack thisStack, ItemStack otherStack, params string[] ignoreAttributeSubTrees)
     {
@@ -145,10 +149,9 @@ public sealed class ItemTaxidermyHide : Item, IContainedMeshSource
     // ---------------------------------------------------------------- the pelt label
 
     /// <summary>
-    /// A pelt's "pelt" label follows the CURRENT definition, like a head's (ItemHead.SyncPeltToken):
-    /// since 1.0.4 the labels carry the sex (Calm, 2026-10-01: a ram head takes a ram's pelt), and a
-    /// pelt made before that is relabelled from the animal it remembers the first time it is moved
-    /// or put in the grid - so no pelt in a world goes to waste. Server only; the change syncs down.
+    /// A pelt's "pelt" label follows the current definition, like a head's (ItemHead.SyncPeltToken). A pelt made before
+    /// the labels carried the sex is relabelled from the animal it remembers the first time it is moved or put in the
+    /// grid, so none goes to waste. Server only; the change syncs down.
     /// </summary>
     internal bool SyncPeltToken(ItemStack stack)
     {
@@ -188,13 +191,11 @@ public sealed class ItemTaxidermyHide : Item, IContainedMeshSource
     // ---------------------------------------------------------------- the handbook
 
     /// <summary>
-    /// ONE generic page per stage - raw, oiled, salted, soaked, pelt - on the medium code, instead
-    /// of a page for every animal and coat (Calm, 2026-10-02); the other sizes have none. The
-    /// creative tab still lists every pelt. Drawn as the example wolf's (Specimen.Example), named
-    /// "Animal pelt" and so on, so it is never mistaken for the game's own hides.
+    /// Every animal of every size, folded into one cycling page per stage (raw, oiled, salted, soaked, pelt) by
+    /// HandbookGroups, with all four sizes sharing it. Named "Animal pelt" and so on, so it is never mistaken for the
+    /// game's own hides.
     /// </summary>
-    public override List<ItemStack> GetHandBookStacks(ICoreClientAPI capi) =>
-        Size == "medium" ? [new ItemStack(this)] : null;
+    public override List<ItemStack> GetHandBookStacks(ICoreClientAPI capi) => Handbook.HandbookVariants.StacksOf(this);
 
     private ItemStack exampleStack;
 
@@ -215,10 +216,9 @@ public sealed class ItemTaxidermyHide : Item, IContainedMeshSource
     public override void OnBeforeRender(ICoreClientAPI capi, ItemStack itemstack, EnumItemRenderTarget target, ref ItemRenderInfo renderinfo)
     {
         itemstack = Drawn(capi, itemstack);
-        // In hand every pelt is the same: its own copy centred on the block and exactly one block
-        // across, so one tpHandTransform fits every animal (Calm, 2026-10-03: only the hyena sat
-        // right - the models differ in size and in how far they reach from the block centre).
-        // The icon and dropped pelts keep the shrink-to-fit below, which Calm is happy with.
+        // In hand every pelt is the same: its own copy centred on the block and exactly one block across, so one
+        // tpHandTransform fits every animal whatever the model's size. The icon and dropped pelts keep the
+        // shrink-to-fit below.
         bool inHand = target is EnumItemRenderTarget.HandTp or EnumItemRenderTarget.HandTpOff;
         var meshRef = inHand ? GetHandMeshRef(capi, itemstack) : GetMeshRef(capi, itemstack);
         if (meshRef != null)
@@ -230,12 +230,11 @@ public sealed class ItemTaxidermyHide : Item, IContainedMeshSource
     }
 
     /// <summary>
-    /// The icon and dropped-item transforms were tuned on the hare's pelt, about one block
-    /// across. One code serves every animal of a size - a gazelle's and a moose's pelt are both
-    /// "large" - so a bigger pelt is shrunk to that footprint here, per pelt, instead of per code.
-    /// The hand does not come here: it draws its own centred one-block copy (GetHandMeshRef).
-    /// Never enlarged. Placed on the ground (ground storage) it keeps its real size, as vanilla's
-    /// bear rugs do.
+    /// The icon and dropped-item transforms were tuned on the hare's pelt, about one block across. One code serves
+    /// every animal of a size - a gazelle's and a moose's pelt are both "large" - so a bigger pelt is shrunk to that
+    /// footprint here, per pelt, instead of per code. The hand does not come here: it draws its own centred one-block
+    /// copy (GetHandMeshRef). Never enlarged. Placed on the ground (ground storage) it keeps its real size, as
+    /// vanilla's bear rugs do.
     /// </summary>
     private const float TunedExtent = 1f;
     private const string TransformCacheKey = "taxidermy-hide-transforms";
@@ -247,8 +246,7 @@ public sealed class ItemTaxidermyHide : Item, IContainedMeshSource
         if (!extents.TryGetValue(key, out float extent) || extent <= TunedExtent) return baseTransform;
         var cache = ObjectCacheUtil.GetOrCreate(capi, TransformCacheKey, () => new Dictionary<(string, EnumItemRenderTarget, AssetLocation), FittedTransform>());
         var ck = (key, target, Code);
-        // Rebuilt whenever the base transform changes, so .tfedit moves big pelts live too (Calm,
-        // 2026-10-03: a pelt in hand would not move - the shrunk copy was made once and kept).
+        // Rebuilt whenever the base transform changes, so .tfedit moves big pelts live too.
         if (cache.TryGetValue(ck, out var cached) && Same(cached.Snapshot, baseTransform)) return cached.Value;
         var snapshot = Snapshot(baseTransform);
         var fitted = baseTransform.Clone();
@@ -315,8 +313,8 @@ public sealed class ItemTaxidermyHide : Item, IContainedMeshSource
     }
 
     /// <summary>
-    /// Ground storage asks here from the TESSELATION thread; the mesh is built on the main thread
-    /// (atlas inserts are GPU work), so an unbuilt one is queued and redrawn - the head does the same.
+    /// Ground storage asks here from the TESSELATION thread; the mesh is built on the main thread (atlas inserts are
+    /// GPU work), so an unbuilt one is queued and redrawn - the head does the same.
     /// </summary>
     public MeshData GenMesh(ItemSlot slot, ITextureAtlasAPI targetAtlas, BlockPos atBlockPos)
     {
@@ -324,7 +322,7 @@ public sealed class ItemTaxidermyHide : Item, IContainedMeshSource
         var cache = ObjectCacheUtil.GetOrCreate(capi, MeshCacheKey, () => new ConcurrentDictionary<string, MeshData>());
         if (cache.TryGetValue(key, out var built))
         {
-            if (built != null) HeadPeltBoxes.Notice(atBlockPos);   // auto boxes test
+            if (built != null) HeadPeltBoxes.Notice(atBlockPos);
             return built?.Clone();
         }
         if (Environment.CurrentManagedThreadId == RuntimeEnv.MainThreadId)
@@ -339,7 +337,10 @@ public sealed class ItemTaxidermyHide : Item, IContainedMeshSource
         return null;
     }
 
-    /// <summary>Ends in DisplayMeshes.Wait while our mesh is unbuilt, so the display's default mesh never sits under the real key.</summary>
+    /// <summary>
+    /// Ends in DisplayMeshes.Wait while our mesh is unbuilt, so the display's default mesh never sits under the real
+    /// key.
+    /// </summary>
     public string GetMeshCacheKey(ItemSlot slot)
     {
         string key = MeshKey(slot.Itemstack);
@@ -350,10 +351,12 @@ public sealed class ItemTaxidermyHide : Item, IContainedMeshSource
         return cache.ContainsKey(key) ? displayKey : displayKey + DisplayMeshes.Wait;
     }
 
-    /// <summary>What makes two stacks look different: state, animal, coat. Null: no design, draw vanilla's hide.</summary>
-    /// <summary>Kept per data tree - asked several times a frame for every pelt drawn (Calm, 2026-10-09: performance).</summary>
+    /// <summary>Kept per data tree: asked several times a frame for every pelt drawn.</summary>
     private readonly System.Runtime.CompilerServices.ConditionalWeakTable<ITreeAttribute, string> meshKeys = new();
 
+    /// <summary>
+    /// What makes two stacks look different: state, animal, coat. Null: no design, draw vanilla's hide.
+    /// </summary>
     private string MeshKey(ItemStack stack)
     {
         var data = Specimen.Of(stack);
@@ -416,8 +419,8 @@ public sealed class ItemTaxidermyHide : Item, IContainedMeshSource
     }
 
     /// <summary>
-    /// Main thread, at client start: create the caches the tesselation thread reads, so the game's
-    /// own ObjectCache is never written from that thread (first use would add the entry there).
+    /// Main thread, at client start: create the caches the tesselation thread reads, so the game's own ObjectCache is
+    /// never written from that thread (first use would add the entry there).
     /// </summary>
     public static void PrepareCaches(ICoreClientAPI capi)
     {
@@ -440,14 +443,12 @@ public sealed class ItemTaxidermyHide : Item, IContainedMeshSource
     }
 
     /// <summary>
-    /// Fur side: the animal's own texture in its own coat (textureIndex: 0 the base, i the i-th
-    /// alternate - the entity renderer's layout). Leather side: vanilla's flesh, or its cured
-    /// pelt leather for a pelt. Oiled, salted and soaked get vanilla's state overlay on both
-    /// sides, exactly as its fox and raccoon hides do. An overlay must be the fur texture's own
-    /// size: vanilla ships 32x32 and 64x64, and for every other size a pelt uses we ship vanilla's
-    /// 64x64 patterns tiled to it (tools/make_hide_overlays.py - vanilla made its bear overlays
-    /// the same way). Raw and the cured pelt look alike on top, as vanilla's do; the leather
-    /// underneath tells them apart (Calm, 2026-09-24: "copy vanilla").
+    /// Fur side: the animal's own texture in its own coat (textureIndex: 0 the base, i the i-th alternate, the entity
+    /// renderer's layout). Leather side: vanilla's flesh, or its cured pelt leather for a pelt. Oiled, salted and
+    /// soaked get vanilla's state overlay on both sides, as its fox and raccoon hides do. An overlay must be the fur
+    /// texture's own size: vanilla ships 32x32 and 64x64, and for every other size a pelt uses we ship vanilla's 64x64
+    /// patterns tiled to it. Raw and the cured pelt look alike on top, as vanilla's do; the leather underneath tells
+    /// them apart.
     /// </summary>
     private sealed class HideTextures : ITexPositionSource
     {
@@ -468,8 +469,8 @@ public sealed class ItemTaxidermyHide : Item, IContainedMeshSource
                 ct = furKey != null && textures.TryGetValue(furKey, out var chosen) ? chosen : textures.Values.First();
             if (ct == null)
             {
-                // The model's own texture, for a type whose entity file lists none (the tainted,
-                // corrupt and nightmare drifters) - the head mesher falls back the same way.
+                // The model's own texture, for a type whose entity file lists none (the tainted, corrupt and nightmare
+                // drifters) - the head mesher falls back the same way.
                 var own = props.Client.LoadedShape?.Textures;
                 var loc = furKey != null && own != null && own.TryGetValue(furKey, out var named) ? named : own?.Values.FirstOrDefault();
                 ct = new CompositeTexture(loc ?? new AssetLocation("game:unknown"));
@@ -509,9 +510,9 @@ public sealed class ItemTaxidermyHide : Item, IContainedMeshSource
         }
 
         /// <summary>
-        /// The stage overlay for a fur texture of exactly this size: vanilla's own for 32x32 and
-        /// 64x64; otherwise item/hide/&lt;state&gt;/&lt;w&gt;x&lt;h&gt; in the animal's own domain (an animal mod
-        /// can ship its own) or ours. Null: none fits, and the stage shows on the leather only.
+        /// The stage overlay for a fur texture of exactly this size: vanilla's own for 32x32 and 64x64; otherwise
+        /// item/hide/&lt;state&gt;/&lt;w&gt;x&lt;h&gt; in the animal's own domain (an animal mod can ship its own) or
+        /// ours. Null: none fits, and the stage shows on the leather only.
         /// </summary>
         private static string StageOverlay(ICoreClientAPI capi, string state, int w, int h, string domain)
         {

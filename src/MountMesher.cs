@@ -9,23 +9,21 @@ using Vintagestory.GameContent;
 namespace Taxidermy;
 
 /// <summary>
-/// Turns a specimen into a static block mesh: the entity's own shape, its attachments
-/// (antlers, horns, tusks), frozen at one frame of one of its own animations.
+/// Turns a specimen into a static block mesh: the entity's own shape, its attachments (antlers, horns, tusks), frozen
+/// at one frame of one of its own animations.
 ///
-/// How: clone the loaded entity shape, step-parent the attachment shapes onto it exactly as
-/// the entity renderer does (<c>EntityBehaviorContainer.addGearToShape</c>, vsessentialsmod),
-/// resolve joints, run a <c>ClientAnimator</c> to the wanted frame and read its joint
-/// matrices, tesselate with joint ids, and multiply every vertex through its joint's matrix.
-/// That is what <c>entityanimated.vsh</c> does on the GPU every frame
-/// (<c>worldPos = modelMatrix * ElementTransforms[jointId] * vertex</c>), done once on the CPU.
-/// The result goes into the chunk mesh, so it is lit like any block - per-vertex light and
-/// AO - and costs nothing per frame. No animator is kept.
+/// How: clone the loaded entity shape, step-parent the attachment shapes onto it exactly as the entity renderer does
+/// (<c>EntityBehaviorContainer.addGearToShape</c>, vsessentialsmod), resolve joints, run a <c>ClientAnimator</c> to the
+/// wanted frame and read its joint matrices, tesselate with joint ids, and multiply every vertex through its joint's
+/// matrix. That is what <c>entityanimated.vsh</c> does on the GPU every frame (<c>worldPos = modelMatrix *
+/// ElementTransforms[jointId] * vertex</c>), done once on the CPU. The result goes into the chunk mesh, so it is lit
+/// like any block - per-vertex light and AO - and costs nothing per frame. No animator is kept.
 ///
-/// Entity textures live in the ENTITY atlas, which a chunk mesh cannot sample. Each one
-/// used is inserted into the block atlas (cached by name, so it happens once per texture).
+/// Entity textures live in the ENTITY atlas, which a chunk mesh cannot sample. Each one used is inserted into the block
+/// atlas (cached by name, so it happens once per texture).
 ///
-/// Meshes are cached per specimen identity + pose; the block entity clones and rotates.
-/// All of this is main-thread: atlas insertion is GPU work.
+/// Meshes are cached per specimen identity + pose; the block entity clones and rotates. All of this is main-thread:
+/// atlas insertion is GPU work.
 /// </summary>
 public static class MountMesher
 {
@@ -37,13 +35,10 @@ public static class MountMesher
     private const string PlaceholderCacheKey = "taxidermy-placeholder-mesh";
 
     /// <summary>
-    /// The stand-in cube for a mount whose animal cannot be built - the animal's mod is not
-    /// installed, so there is no shape to lift. Vanilla's own white-with-a-red-question-mark
-    /// texture (game:textures/unknown.png), which says "something is missing here" in the
-    /// language the game already uses. Calm, 2026-09-22: an invisible block is very hard to
-    /// find, and these must be easy to see and break.
-    /// The specimen is untouched underneath, so reinstalling the animal mod brings the real
-    /// mount back.
+    /// The stand-in cube for a mount whose animal cannot be built, because its mod is not installed: vanilla's white
+    /// block with a red question mark (game:textures/unknown.png). An invisible block would be very hard to find, and
+    /// these must be easy to see and break. The specimen is untouched underneath, so reinstalling the animal's mod
+    /// brings the real mount back.
     /// </summary>
     public static MeshData GetPlaceholderMesh(ICoreClientAPI capi)
     {
@@ -86,9 +81,9 @@ public static class MountMesher
         try { mesh = Build(capi, data, def); }
         catch (Exception e)
         {
-            // The mount and head ITEMS ask here every frame they are drawn (hotbar, inventory, hand),
-            // with nothing round them to catch it - a model that cannot be built must not take the
-            // game down. Remembered as null like a failed hide, so it is logged once, not every frame.
+            // The mount and head ITEMS ask here every frame they are drawn (hotbar, inventory, hand), with nothing
+            // round them to catch it - a model that cannot be built must not take the game down. Remembered as null
+            // like a failed hide, so it is logged once, not every frame.
             capi.Logger.Error("[Taxidermy] Cannot build the mount for {0}: {1}", data.GetString("entityCode"), e);
             cache[key] = null;
             return null;
@@ -114,10 +109,10 @@ public static class MountMesher
         IdentityKey(data) + "|" + def.Scale + "|" + def.Code + (flat ? "|flat" : "");
 
     /// <summary>
-    /// The animal's head, lifted out of its own model: the topmost element whose name contains
-    /// "head" and everything under it (antlers and horns step-parent onto "head", so they come
-    /// too), eyes removed, in the rest pose, grounded and centred on the block. Falls back to
-    /// the whole animal when a model has no element called head. Main thread only.
+    /// The animal's head, lifted out of its own model: the topmost element whose name contains "head" and everything
+    /// under it (antlers and horns step-parent onto "head", so they come too), eyes removed, in the rest pose, grounded
+    /// and centred on the block. Falls back to the whole animal when a model has no element called head. Main thread
+    /// only.
     /// <paramref name="flat"/>: the head as it lies on the ground - see BuildHead.
     /// </summary>
     public static MeshData GetHeadMesh(ICoreClientAPI capi, ITreeAttribute data, AnimalDefinition def, bool flat = false)
@@ -133,10 +128,11 @@ public static class MountMesher
         return mesh;
     }
 
-    // ------------------------------------------------------------------ asked every frame (Calm, 2026-10-09: performance)
+    // ------------------------------------------------------------------ asked every frame
 
-    /// <summary>A specimen's mesh keys, worked out once per data tree - the item refs are asked every frame for every mount
-    /// or head drawn, and building the keys each time made garbage every frame. Redone if its definition or scale changes.</summary>
+    /// <summary>A specimen's mesh keys, worked out once per data tree - the item refs are asked every frame for every
+    /// mount or head drawn, and building the keys each time made garbage every frame. Redone if its definition or scale
+    /// changes.</summary>
     private sealed class Keys { public AnimalDefinition Def; public float Scale; public string Mount, Head; }
     private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<ITreeAttribute, Keys> keysOf = new();
 
@@ -165,12 +161,11 @@ public static class MountMesher
     private static readonly string[] NeckWords = ["neck", "throat"];
 
     /// <summary>
-    /// <paramref name="flat"/>: the head as it lies on the ground - none of the body's pose (the
-    /// parents' transform is skipped and the root's own tilt zeroed), turned about its pitch axis to
-    /// where it settles on a floor: the angle, -90..+30 degrees, that puts its centre lowest above
-    /// its lowest point (a wolf sits level on its jaw, a deer tips back ~23 degrees onto its jaw).
-    /// The neck comes too (2026-09-26; 2026-09-25 it was dropped), but only the head is measured
-    /// for the settle and the floor, so the neck is free to go into the ground.
+    /// <paramref name="flat"/>: the head as it lies on the ground. None of the body's pose (the parents' transform is
+    /// skipped and the root's own tilt zeroed), turned about its pitch axis to where it settles on a floor: the angle,
+    /// -90 to +30 degrees, that puts its centre lowest above its lowest point (a wolf sits level on its jaw, a deer
+    /// tips back about 23 degrees). The neck comes too, but only the head is measured for the settle and the floor, so
+    /// the neck is free to go into the ground.
     /// </summary>
     private static MeshData BuildHead(ICoreClientAPI capi, ITreeAttribute data, AnimalDefinition def, bool flat = false)
     {
@@ -205,10 +200,9 @@ public static class MountMesher
             capi.Logger.Warning("[Taxidermy] {0} has no element named head - showing the whole animal", entityCode);
             return null;
         }
-        // Take the neck too (Calm, 2026-09-21): it is usually the head's parent, and on a wall it
-        // is what sinks into the plaque, which makes the head sit and position naturally. On the
-        // ground too since 2026-09-26 (Calm: some heads, like the corrupt drifter's, lose detail
-        // without it) - but the head ALONE decides how it settles, so the neck may go into the floor.
+        // Take the neck too: it is usually the head's parent, it sinks into the plaque on a wall so the head sits
+        // naturally, and some heads lose detail without it on the ground. The head alone decides how it settles, so the
+        // neck may go into the floor.
         var headOnly = head;
         var necks = new List<ShapeElement>();
         while (chain.Count > 0 && chain[^1].Name != null && NeckWords.Any(w => chain[^1].Name.Contains(w, StringComparison.OrdinalIgnoreCase)))
@@ -220,20 +214,19 @@ public static class MountMesher
         if (!def.KeepEyes) RemoveEyes(head);
         if (flat) foreach (var neck in necks) FillMissingFaces(neck);
 
-        // The head's own coordinates are relative to its parent's frame. Tesselate it as a root
-        // - which places it in that frame - then push the vertices through the parents'
-        // accumulated transform (vsapi ShapeElement.GetLocalTransformMatrix, in block units).
-        // GetLocalTransformMatrix multiplies ONTO its output buffer rather than starting from
-        // identity - vanilla's GetInverseModelMatrix resets it before every call, and without
-        // that the parents compound and the head lands nowhere near the slot (2026-09-21).
+        // The head's own coordinates are relative to its parent's frame. Tesselate it as a root, which places it in
+        // that frame, then push the vertices through the parents' accumulated transform (vsapi
+        // ShapeElement.GetLocalTransformMatrix, in block units). GetLocalTransformMatrix multiplies onto its output
+        // buffer rather than starting from identity, so it is reset before every call, or the parents compound and the
+        // head lands nowhere near the slot.
         var chainMatrix = Mat4f.Create();
         var tmp = new float[16];
         if (flat)
         {
-            // Keep only which way the body TURNS the head (the parents' rotation about Y), drop its
-            // tilts. Most models face -X outright, but some are built facing another way and turned
-            // by a parent - vanilla's bear faces +Z and its root "Cube1" turns it -90 about Y - and
-            // without that turn a bear head lies sideways and Settle rolls it instead of tipping it.
+            // Keep only which way the body TURNS the head (the parents' rotation about Y), drop its tilts. Most models
+            // face -X outright, but some are built facing another way and turned by a parent - vanilla's bear faces +Z
+            // and its root "Cube1" turns it -90 about Y - and without that turn a bear head lies sideways and Settle
+            // rolls it instead of tipping it.
             double turn = chain.Sum(p => p.RotationY);
             chain.Clear();
             head.RotationX = head.RotationZ = 0;
@@ -248,8 +241,8 @@ public static class MountMesher
         var texSource = new AtlasSource(capi, textures, baseKeys, data.GetInt("textureIndex"), entityCode, shape.Textures);
         var meta = new TesselationMetaData { TypeForLogging = logName, TexSource = texSource };
 
-        // On the ground with a neck: the head alone, in the same frame as the whole piece (the
-        // necks' own transforms on top), is what Settle and the floor are measured on.
+        // On the ground with a neck: the head alone, in the same frame as the whole piece (the necks' own transforms on
+        // top), is what Settle and the floor are measured on.
         MeshData reference = null;
         if (flat && necks.Count > 0)
         {
@@ -335,13 +328,11 @@ public static class MountMesher
     }
 
     /// <summary>
-    /// A model leaves out the faces nobody should see - the back of the neck where it meets the
-    /// body, the back of a paper-thin part - and the game draws no face from behind. Cut off the
-    /// body and lying on the ground, the head was see-through from behind (Calm, 2026-09-26: the
-    /// manatee's big neck, the boar's neck). Each missing face gets a copy of the one opposite,
-    /// which has the same size; new face objects in a new array, because Clone shares them with
-    /// the living animal's shape. The NECK elements only, not their children: filling every part
-    /// put odd faces on fur strands and the like (Calm, 2026-09-26, the musk ox).
+    /// A model leaves out the faces nobody should see, such as the back of the neck where it meets the body, and the
+    /// game draws no face from behind. So a head cut off the body and lying on the ground is see-through from behind.
+    /// Each missing face gets a copy of the one opposite, which has the same size; new face objects in a new array,
+    /// because Clone shares them with the living animal's shape. The neck elements only, not their children: filling
+    /// every part put odd faces on fur strands.
     /// </summary>
     private static void FillMissingFaces(ShapeElement el)
     {
@@ -413,9 +404,9 @@ public static class MountMesher
     }
 
     /// <summary>
-    /// The same animal as an uploaded mesh for the ITEM (inventory, hand, ground), fitted
-    /// into a unit cube and centred so every animal sits in a slot the same way. One GPU
-    /// upload per specimen identity + pose, freed when the world is left.
+    /// The same animal as an uploaded mesh for the ITEM (inventory, hand, ground), fitted into a unit cube and centred
+    /// so every animal sits in a slot the same way. One GPU upload per specimen identity + pose, freed when the world
+    /// is left.
     /// </summary>
     public static MultiTextureMeshRef GetItemMesh(ICoreClientAPI capi, ITreeAttribute data, AnimalDefinition def)
     {
@@ -455,8 +446,7 @@ public static class MountMesher
         var loaded = props?.Client?.LoadedShape;
         if (loaded == null)
         {
-            // Once per animal per session: a mount or head of a missing animal is asked for again
-            // every frame, and this line filled Calm's log 16,696 times in two minutes (2026-09-24).
+            // Once per animal per session: a mount or head of a missing animal is asked for again every frame.
             lock (WarnedMissing)
                 if (WarnedMissing.Add(entityCode.ToString()))
                     capi.Logger.Warning("[Taxidermy] No loaded shape for {0} - is the entity from a mod that is not installed?", entityCode);
@@ -487,8 +477,8 @@ public static class MountMesher
 
         var pose = def.PoseByCode(data.GetString("pose"));
         float[] matrices = null;
-        // Joints even for a pose without an animation: they say which moving part (body, each leg, neck, head, tail)
-        // every vertex belongs to - the parts the mount's collision is built from (2026-10-06).
+        // Joints even for a pose without an animation: they say which moving part every vertex belongs to, which the
+        // mount's collision is built from.
         bool jointed = false;
         if (!string.IsNullOrEmpty(pose.Animation) || shape.Animations?.Length > 0)
         {
@@ -543,8 +533,7 @@ public static class MountMesher
         var mesh = Tesselate();
         var reference = mesh;
 
-        // Feet on the floor and footprint centred on the block, whatever the pose does: a lying
-        // or rearing animal's bounding box wanders, and Calm saw poses drift off centre.
+        // Feet on the floor and footprint centred on the block, whatever the pose does.
         float minX = float.MaxValue, minY = float.MaxValue, minZ = float.MaxValue, maxX = float.MinValue, maxZ = float.MinValue;
         for (int i = 0; i < reference.VerticesCount; i++)
         {
@@ -563,18 +552,22 @@ public static class MountMesher
 
     private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<MeshData, HashSet<int>> HeadOfMesh = new();
 
-    /// <summary>The joints that make up the head of a mount mesh from <see cref="Get"/>, or null (no joints / no head found).</summary>
+    /// <summary>
+    /// The joints that make up the head of a mount mesh from <see cref="Get"/>, or null (no joints / no head found).
+    /// </summary>
     public static HashSet<int> HeadJointsOf(MeshData shared) => shared != null && HeadOfMesh.TryGetValue(shared, out var h) ? h : null;
 
     private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<MeshData, HashSet<int>> TurnOfMesh = new();
 
-    /// <summary>The joints of the head AND its neck - the part that can turn on its own (BEMount.SeparateHead) - or null.</summary>
+    /// <summary>
+    /// The joints of the head AND its neck - the part that can turn on its own (BEMount.SeparateHead) - or null.
+    /// </summary>
     public static HashSet<int> TurningJointsOf(MeshData shared) => shared != null && TurnOfMesh.TryGetValue(shared, out var t) ? t : null;
 
     /// <summary>
-    /// The head with its neck, as a head trophy is cut (BuildHead: the parents named neck or throat come too), so it turns
-    /// where the neck meets the body rather than at the jaw. A joint the rest of the animal also uses is left out - an element
-    /// with no joint of its own takes its parent's, and turning that would turn the body with it.
+    /// The head with its neck, as a head trophy is cut (BuildHead: the parents named neck or throat come too), so it
+    /// turns where the neck meets the body rather than at the jaw. A joint the rest of the animal also uses is left out
+    /// - an element with no joint of its own takes its parent's, and turning that would turn the body with it.
     /// </summary>
     private static HashSet<int> TurningJoints(ShapeElement[] elements, ShapeElement head, List<ShapeElement> chain)
     {
@@ -596,26 +589,29 @@ public static class MountMesher
         return joints;
     }
 
-    /// <summary>Per built mount mesh: the joint (moving part) of every vertex, in vertex order. A Clone keeps the order.</summary>
+    /// <summary>
+    /// Per built mount mesh: the joint (moving part) of every vertex, in vertex order. A Clone keeps the order.
+    /// </summary>
     private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<MeshData, int[]> PartsOfMesh = new();
 
-    /// <summary>The joint of every vertex of a mount mesh from <see cref="Get"/>, or null (no joints, a placeholder).</summary>
+    /// <summary>
+    /// The joint of every vertex of a mount mesh from <see cref="Get"/>, or null (no joints, a placeholder).
+    /// </summary>
     public static int[] JointsOf(MeshData shared) => shared != null && PartsOfMesh.TryGetValue(shared, out var j) ? j : null;
 
     /// <summary>
-    /// The joint matrices for one frame. Vanilla's animator advances by dt and eases in over
-    /// several ticks; we want a single exact frame, so: activate (which sets the start frame
-    /// and generates the frames), force the easing to 1, and evaluate once with dt = 0.
-    /// With dt = 0 <c>RunningAnimation.Progress</c> neither moves the frame nor changes the
-    /// easing, and <c>CalcBlendedWeight</c> then gives the pose its full weight.
+    /// The joint matrices for one frame. Vanilla's animator advances by dt and eases in over several ticks; we want a
+    /// single exact frame, so: activate (which sets the start frame and generates the frames), force the easing to 1,
+    /// and evaluate once with dt = 0. With dt = 0 <c>RunningAnimation.Progress</c> neither moves the frame nor changes
+    /// the easing, and <c>CalcBlendedWeight</c> then gives the pose its full weight.
     /// </summary>
     private static float[] Evaluate(ICoreClientAPI capi, Shape shape, PoseDefinition pose, bool hasAttachments, AssetLocation entityCode)
     {
         var anims = shape.Animations ?? [];
         Animation Find(string code) => anims.FirstOrDefault(a => string.Equals(a.Code, code, StringComparison.OrdinalIgnoreCase) && a.KeyFrames?.Length > 0 && a.QuantityFrames > 0);
 
-        // Deer and the like carry "-antlers" variants of their animations, played when the
-        // antler shape is attached. Use it when it exists, silently otherwise.
+        // Deer and the like carry "-antlers" variants of their animations, played when the antler shape is attached.
+        // Use it when it exists, silently otherwise.
         var anim = (hasAttachments ? Find(pose.Animation + "-antlers") : null) ?? Find(pose.Animation);
         if (anim == null)
         {
@@ -661,8 +657,8 @@ public static class MountMesher
             mesh.xyz[i * 3 + 1] = matrices[m + 1] * x + matrices[m + 5] * y + matrices[m + 9] * z + matrices[m + 13];
             mesh.xyz[i * 3 + 2] = matrices[m + 2] * x + matrices[m + 6] * y + matrices[m + 10] * z + matrices[m + 14];
 
-            // Normals turn with the joint. Animation matrices are rotations and translations,
-            // so the upper 3x3 is enough; renormalise in case of scale.
+            // Normals turn with the joint. Animation matrices are rotations and translations, so the upper 3x3 is
+            // enough; renormalise in case of scale.
             VertexFlags.UnpackNormal(mesh.Flags[i], n);
             float nx = matrices[m] * n[0] + matrices[m + 4] * n[1] + matrices[m + 8] * n[2];
             float ny = matrices[m + 1] * n[0] + matrices[m + 5] * n[1] + matrices[m + 9] * n[2];
@@ -674,11 +670,10 @@ public static class MountMesher
     }
 
     /// <summary>
-    /// Maps the shape's texture codes to block-atlas positions. Base entity textures are baked
-    /// (alternates expanded, wildcards resolved) and inserted by name; the coat is chosen by
-    /// the specimen's textureIndex, where 0 is the base and i is Alternates[i-1] - the same
-    /// layout the entity renderer uses. Textures that attachments added already carry a
-    /// block-atlas sub id, because addGearToShape was given the block atlas to insert into.
+    /// Maps the shape's texture codes to block-atlas positions. Base entity textures are baked (alternates expanded,
+    /// wildcards resolved) and inserted by name; the coat is chosen by the specimen's textureIndex, where 0 is the base
+    /// and i is Alternates[i-1] - the same layout the entity renderer uses. Textures that attachments added already
+    /// carry a block-atlas sub id, because addGearToShape was given the block atlas to insert into.
     /// </summary>
     private sealed class AtlasSource : ITexPositionSource
     {

@@ -18,7 +18,7 @@ namespace Taxidermy;
 //
 // Files: AutoBoxes.cs (this - the tools), AutoBoxesFiller.cs (the filler block), AutoBoxesMeasure.cs
 // (the box from a block's model) + assets blocktypes/autoboxesfiller.json. Guide: AUTOBOXES-GUIDE.md.
-// From Taxidermy by Calminaion - free to copy into any mod.
+// Free to copy into any mod.
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
 /// <summary>A block entity whose box reaches past its block. The filler asks it for its share of each space.</summary>
